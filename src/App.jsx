@@ -458,11 +458,11 @@ function AnalysisManagement({ userData, location, locationError, onRetryGps, set
         { id: 'receipt', name: '시료접수', component: SampleRegistrationForm, roles: ['시료채취원', '관리자'] },
         { id: 'receive_wait', name: '시료수령 대기', component: SampleReceiveScreen, roles: ['분석원', '분석보조원', '관리자'] },
         { id: 'prep_wait', name: '시료전처리 대기', component: SamplePrepScreen, roles: ['분석원', '분석보조원', '관리자'] },
-        { id: 'analysis_wait', name: '분석대기', component: null, roles: ['분석원', '관리자'] },
-        { id: 'analyzing', name: '분석중', component: null, roles: ['분석원', '관리자'] },
-        { id: 'analysis_done', name: '분석완료', component: null, roles: ['분석원', '관리자'] },
-        { id: 'tech_review_wait', name: '기술책임자 검토', component: null, roles: ['기술책임자', '관리자'] },
-        { id: 'assoc_review_wait', name: '협회 검토', component: null, roles: ['협회', '관리자'] },
+        { id: 'analysis_wait', name: '분석대기', component: SampleAnalysisScreen, roles: ['분석원', '관리자'] },
+        { id: 'analyzing', name: '분석중', component: SampleAnalyzingScreen, roles: ['분석원', '관리자'] },
+        { id: 'analysis_done', name: '분석완료', component: SampleAnalysisDoneScreen, roles: ['분석원', '관리자'] },
+        { id: 'tech_review_wait', name: '기술책임자 검토', component: SampleTechReviewScreen, roles: ['기술책임자', '관리자'] },
+        { id: 'assoc_review_wait', name: '협회 검토', component: SampleAssocReviewScreen, roles: ['협회', '관리자'] },
         { id: 'complete', name: '최종완료', component: null, roles: ['all'] },
     ];
 
@@ -531,6 +531,218 @@ function AnalysisManagement({ userData, location, locationError, onRetryGps, set
                                         <div>{sample.itemName}</div>
                                         <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
                                         <div>{receiveDate}</div>
+                                    </li>
+                                );
+                            }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
+                        </ul>
+                    </div>
+                </div>
+            );
+        }
+
+        if (currentStep === 'analysis_wait') {
+            return (
+                <div>
+                    <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
+                    <div className="bg-white rounded-lg shadow">
+                        <div className="grid grid-cols-5 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg">
+                            <div>시료ID</div>
+                            <div>품목명</div>
+                            <div>시료채취일시</div>
+                            <div>시료수령일시</div>
+                            <div>전처리완료일시</div>
+                        </div>
+                        <ul className="divide-y divide-gray-200">
+                            {samplesForStep.length > 0 ? samplesForStep.map(sample => {
+                                const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+                                const prepHistory = sample.history?.find(h => h.action === '시료전처리');
+                                const receiveDate = receiveHistory ? receiveHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const prepDate = prepHistory ? prepHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                return (
+                                    <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className={`grid grid-cols-5 gap-4 p-4 text-sm ${stepInfo.component ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
+                                        <div className="font-medium text-gray-900">{sample.sampleCode}</div>
+                                        <div>{sample.itemName}</div>
+                                        <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
+                                        <div>{receiveDate}</div>
+                                        <div>{prepDate}</div>
+                                    </li>
+                                );
+                            }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
+                        </ul>
+                    </div>
+                </div>
+            );
+        }
+
+        if (currentStep === 'analyzing') {
+            return (
+                <div>
+                    <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
+                    <div className="bg-white rounded-lg shadow">
+                        <div className="grid grid-cols-6 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg">
+                            <div>시료ID</div>
+                            <div>품목명</div>
+                            <div>시료채취일시</div>
+                            <div>시료수령일시</div>
+                            <div>전처리완료일시</div>
+                            <div>계측시작일시</div>
+                        </div>
+                        <ul className="divide-y divide-gray-200">
+                            {samplesForStep.length > 0 ? samplesForStep.map(sample => {
+                                const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+                                const prepHistory = sample.history?.find(h => h.action === '시료전처리');
+                                const analysisHistory = sample.history?.find(h => h.action === '분석');
+                                const receiveDate = receiveHistory ? receiveHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const prepDate = prepHistory ? prepHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const analysisDate = analysisHistory ? new Date(analysisHistory.measurementDateTime).toLocaleString() : 'N/A';
+                                return (
+                                    <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className={`grid grid-cols-6 gap-4 p-4 text-sm ${stepInfo.component ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
+                                        <div className="font-medium text-gray-900">{sample.sampleCode}</div>
+                                        <div>{sample.itemName}</div>
+                                        <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
+                                        <div>{receiveDate}</div>
+                                        <div>{prepDate}</div>
+                                        <div>{analysisDate}</div>
+                                    </li>
+                                );
+                            }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
+                        </ul>
+                    </div>
+                </div>
+            );
+        }
+
+        if (currentStep === 'analysis_done') {
+            return (
+                <div>
+                    <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
+                    <div className="bg-white rounded-lg shadow">
+                        <div className="grid grid-cols-7 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg text-sm">
+                            <div>시료ID</div>
+                            <div>품목명</div>
+                            <div>시료채취일시</div>
+                            <div>시료수령일시</div>
+                            <div>전처리완료일시</div>
+                            <div>계측시작일시</div>
+                            <div>분석평가완료일시</div>
+                        </div>
+                        <ul className="divide-y divide-gray-200">
+                            {samplesForStep.length > 0 ? samplesForStep.map(sample => {
+                                const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+                                const prepHistory = sample.history?.find(h => h.action === '시료전처리');
+                                const analysisHistory = sample.history?.find(h => h.action === '분석');
+                                const evaluationHistory = sample.history?.find(h => h.action === '분석평가');
+                                const receiveDate = receiveHistory ? receiveHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const prepDate = prepHistory ? prepHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const analysisDate = analysisHistory ? new Date(analysisHistory.measurementDateTime).toLocaleString() : 'N/A';
+                                const evaluationDate = evaluationHistory ? evaluationHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                return (
+                                    <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className={`grid grid-cols-7 gap-4 p-4 text-sm ${stepInfo.component ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
+                                        <div className="font-medium text-gray-900">{sample.sampleCode}</div>
+                                        <div>{sample.itemName}</div>
+                                        <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
+                                        <div>{receiveDate}</div>
+                                        <div>{prepDate}</div>
+                                        <div>{analysisDate}</div>
+                                        <div>{evaluationDate}</div>
+                                    </li>
+                                );
+                            }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
+                        </ul>
+                    </div>
+                </div>
+            );
+        }
+
+        if (currentStep === 'tech_review_wait') {
+            return (
+                <div>
+                    <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
+                    <div className="bg-white rounded-lg shadow">
+                        <div className="grid grid-cols-8 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg text-xs">
+                            <div>시료ID</div>
+                            <div>품목명</div>
+                            <div>시료채취일시</div>
+                            <div>시료수령일시</div>
+                            <div>전처리완료일시</div>
+                            <div>계측시작일시</div>
+                            <div>분석평가완료일시</div>
+                            <div>결과통보일시</div>
+                        </div>
+                        <ul className="divide-y divide-gray-200">
+                            {samplesForStep.length > 0 ? samplesForStep.map(sample => {
+                                const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+                                const prepHistory = sample.history?.find(h => h.action === '시료전처리');
+                                const analysisHistory = sample.history?.find(h => h.action === '분석');
+                                const evaluationHistory = sample.history?.find(h => h.action === '분석평가');
+                                const notificationHistory = sample.history?.find(h => h.action === '결과통보');
+                                const receiveDate = receiveHistory ? receiveHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const prepDate = prepHistory ? prepHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const analysisDate = analysisHistory ? new Date(analysisHistory.measurementDateTime).toLocaleString() : 'N/A';
+                                const evaluationDate = evaluationHistory ? evaluationHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const notificationDate = notificationHistory ? new Date(notificationHistory.notificationDate).toLocaleString() : 'N/A';
+                                return (
+                                    <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className={`grid grid-cols-8 gap-4 p-4 text-sm ${stepInfo.component ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
+                                        <div className="font-medium text-gray-900">{sample.sampleCode}</div>
+                                        <div>{sample.itemName}</div>
+                                        <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
+                                        <div>{receiveDate}</div>
+                                        <div>{prepDate}</div>
+                                        <div>{analysisDate}</div>
+                                        <div>{evaluationDate}</div>
+                                        <div>{notificationDate}</div>
+                                    </li>
+                                );
+                            }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
+                        </ul>
+                    </div>
+                </div>
+            );
+        }
+
+        if (currentStep === 'assoc_review_wait') {
+            return (
+                <div>
+                    <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
+                    <div className="bg-white rounded-lg shadow">
+                        <div className="grid grid-cols-9 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg text-xs">
+                            <div>시료ID</div>
+                            <div>품목명</div>
+                            <div>시료채취일시</div>
+                            <div>시료수령일시</div>
+                            <div>전처리완료일시</div>
+                            <div>계측시작일시</div>
+                            <div>분석평가완료일시</div>
+                            <div>결과통보일시</div>
+                            <div>기술책임자검토일시</div>
+                        </div>
+                        <ul className="divide-y divide-gray-200">
+                            {samplesForStep.length > 0 ? samplesForStep.map(sample => {
+                                const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+                                const prepHistory = sample.history?.find(h => h.action === '시료전처리');
+                                const analysisHistory = sample.history?.find(h => h.action === '분석');
+                                const evaluationHistory = sample.history?.find(h => h.action === '분석평가');
+                                const notificationHistory = sample.history?.find(h => h.action === '결과통보');
+                                const techReviewHistory = sample.history?.find(h => h.action === '기술책임자검토');
+
+                                const receiveDate = receiveHistory ? receiveHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const prepDate = prepHistory ? prepHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const analysisDate = analysisHistory && analysisHistory.measurementDateTime ? new Date(analysisHistory.measurementDateTime).toLocaleString() : 'N/A';
+                                const evaluationDate = evaluationHistory ? evaluationHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                const notificationDate = notificationHistory && notificationHistory.notificationDate ? new Date(notificationHistory.notificationDate).toLocaleString() : 'N/A';
+                                const techReviewDate = techReviewHistory ? techReviewHistory.timestamp.toDate().toLocaleString() : 'N/A';
+
+                                return (
+                                    <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className={`grid grid-cols-9 gap-4 p-4 text-sm ${stepInfo.component ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
+                                        <div className="font-medium text-gray-900">{sample.sampleCode}</div>
+                                        <div>{sample.itemName}</div>
+                                        <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
+                                        <div>{receiveDate}</div>
+                                        <div>{prepDate}</div>
+                                        <div>{analysisDate}</div>
+                                        <div>{evaluationDate}</div>
+                                        <div>{notificationDate}</div>
+                                        <div>{techReviewDate}</div>
                                     </li>
                                 );
                             }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
@@ -1032,6 +1244,12 @@ function SamplePrepScreen({ sample, userData, location, setSelectedSample, showM
     const [photos, setPhotos] = useState([]);
     const [signature, setSignature] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [analysisType, setAnalysisType] = useState({ alpha: false, beta: false, gamma: false });
+
+    const handleAnalysisTypeChange = (e) => {
+        const { name, checked } = e.target;
+        setAnalysisType(prev => ({ ...prev, [name]: checked }));
+    };
 
     const handleFileChange = (e) => {
         if (e.target.files.length > 2) {
@@ -1078,6 +1296,7 @@ function SamplePrepScreen({ sample, userData, location, setSelectedSample, showM
                 timestamp: Timestamp.now(),
                 prepWeight: `${prepWeight} kg`,
                 photos: photoURLs,
+                analysisType,
                 signature: {
                     user: signature.user,
                     datetime: signature.datetime.toISOString(),
@@ -1087,7 +1306,8 @@ function SamplePrepScreen({ sample, userData, location, setSelectedSample, showM
 
             await updateDoc(sampleRef, {
                 status: 'analysis_wait',
-                history: [...sample.history, newHistoryEntry]
+                history: [...sample.history, newHistoryEntry],
+                analysisType,
             });
 
             showMessage('시료 전처리가 완료되었습니다.');
@@ -1137,6 +1357,26 @@ function SamplePrepScreen({ sample, userData, location, setSelectedSample, showM
                             ))}
                             {!receiveHistory?.photos && <span>N/A</span>}
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label className="block text-lg font-semibold mb-2">분석유형</label>
+                    <div className="flex items-center space-x-4">
+                        {['alpha', 'beta', 'gamma'].map(type => (
+                            <label key={type} className="flex items-center">
+                                <input
+                                    type="checkbox"
+                                    name={type}
+                                    checked={analysisType[type]}
+                                    onChange={handleAnalysisTypeChange}
+                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <span className="ml-2 text-sm text-gray-700">{type.charAt(0).toUpperCase() + type.slice(1)}</span>
+                            </label>
+                        ))}
                     </div>
                 </div>
             </div>
@@ -1202,8 +1442,3400 @@ function SamplePrepScreen({ sample, userData, location, setSelectedSample, showM
     );
 }
 
+function SampleAnalysisScreen({ sample, userData, location, setSelectedSample, showMessage }) {
+    const [measurementTime, setMeasurementTime] = useState('');
+    const [measurementDateTime, setMeasurementDateTime] = useState('');
+    const [equipmentCode, setEquipmentCode] = useState('');
+    const [isNotApplicable, setIsNotApplicable] = useState(sample.type === '위판장');
+    const [equipmentList, setEquipmentList] = useState([]);
+    const [signature, setSignature] = useState(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        const fetchEquipment = async () => {
+            if (userData.inspectionOffice && userData.inspectionOffice.length > 0) {
+                const q = query(collection(db, `/artifacts/${appId}/public/data/equipment`), where("agency", "in", userData.inspectionOffice));
+                const querySnapshot = await getDocs(q);
+                const equipList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setEquipmentList(equipList);
+                if (equipList.length > 0 && !isNotApplicable) {
+                    setEquipmentCode(equipList[0].id);
+                }
+            }
+        };
+        fetchEquipment();
+        if (isNotApplicable) {
+            setEquipmentCode('해당없음');
+        }
+    }, [userData.inspectionOffice, isNotApplicable]);
+
+    const handleSign = () => {
+        setSignature({
+            user: userData.name,
+            datetime: new Date(),
+            gps: location ? { lat: location.lat, lng: location.lng } : null
+        });
+    };
+
+    const handleComplete = async () => {
+        if (!measurementDateTime || !measurementTime || !equipmentCode) {
+            showMessage("계측 정보와 장비 코드를 모두 입력해주세요.");
+            return;
+        }
+        if (!signature) {
+            showMessage("전자결재 서명을 진행해주세요.");
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            const newHistoryEntry = {
+                action: '분석',
+                user: userData.name,
+                userId: userData.uid,
+                timestamp: Timestamp.now(),
+                measurementDateTime,
+                measurementTime,
+                equipmentCode,
+                signature: {
+                    user: signature.user,
+                    datetime: signature.datetime.toISOString(),
+                    gps: signature.gps ? `${signature.gps.lat}, ${signature.gps.lng}` : 'N/A'
+                }
+            };
+
+            await updateDoc(sampleRef, {
+                status: 'analyzing',
+                history: [...sample.history, newHistoryEntry]
+            });
+
+            showMessage('분석이 시작되었습니다.');
+            setSelectedSample(null);
+        } catch (error) {
+            showMessage(`분석 시작 처리에 실패했습니다: ${error.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const registrationHistory = sample.history?.find(h => h.action === '시료접수');
+    const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+    const prepHistory = sample.history?.find(h => h.action === '시료전처리');
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
+            <div>
+                <button onClick={() => setSelectedSample(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로</button>
+                <h3 className="text-2xl font-bold">분석 대기: {sample.sampleCode}</h3>
+            </div>
+
+            <div className="border-t pt-4">
+                <h4 className="text-lg font-semibold mb-2">시료 정보</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                    <p><strong>시료 ID:</strong> {sample.sampleCode}</p>
+                    <p><strong>시료분류:</strong> {sample.type}</p>
+                    <p><strong>품목명:</strong> {sample.itemName}</p>
+                    <p><strong>시료접수자:</strong> {sample.collectorName}</p>
+                    <p><strong>연락처:</strong> {sample.collectorContact}</p>
+                    <p><strong>접수검사소명:</strong> {sample.lab}</p>
+                    <p><strong>시료채취일:</strong> {sample.datetime}</p>
+                    <p><strong>채취장소:</strong> {sample.location}</p>
+                    <p><strong>시료량:</strong> {sample.sampleAmount} kg</p>
+                    <p><strong>시료조제무게:</strong> {prepHistory?.prepWeight || 'N/A'}</p>
+                    <p><strong>분석유형:</strong> {sample.analysisType ? Object.entries(sample.analysisType).filter(([, val]) => val).map(([key]) => key).join(', ') : 'N/A'}</p>
+                    <p className="col-span-full"><strong>추가정보:</strong> {sample.etc || 'N/A'}</p>
+                </div>
+                <div className="mt-4 space-y-2">
+                    {[
+                        { title: '시료채취사진', photos: [sample.photos?.photo1, sample.photos?.photo2] },
+                        { title: '시료인수사진', photos: receiveHistory?.photos },
+                        { title: '시료전처리사진', photos: prepHistory?.photos }
+                    ].map(({ title, photos }) => (
+                        <div key={title}>
+                            <strong>{title}:</strong>
+                            <div className="flex gap-4 mt-1">
+                                {photos?.length > 0 ? photos.filter(p => p).map((photo, index) => (
+                                    <a key={index} href={photo} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">사진 {index + 1} 보기</a>
+                                )) : <span>N/A</span>}
+                            </div>
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label htmlFor="measurementDateTime" className="block text-lg font-semibold mb-2">계측일시</label>
+                    <input type="datetime-local" id="measurementDateTime" value={measurementDateTime} onChange={(e) => setMeasurementDateTime(e.target.value)} required className="w-full p-2 border rounded-md" />
+                </div>
+                <div>
+                    <label htmlFor="measurementTime" className="block text-lg font-semibold mb-2">계측시간</label>
+                    <input type="text" id="measurementTime" value={measurementTime} onChange={(e) => setMeasurementTime(e.target.value)} placeholder="예: 3600초" required className="w-full p-2 border rounded-md" />
+                </div>
+                <div>
+                    <label htmlFor="equipmentCode" className="block text-lg font-semibold mb-2">장비코드</label>
+                    <div className="flex items-center gap-4">
+                        <select id="equipmentCode" value={equipmentCode} onChange={(e) => setEquipmentCode(e.target.value)} disabled={isNotApplicable} className="flex-grow p-2 border rounded-md disabled:bg-gray-100">
+                            {isNotApplicable ? <option>해당없음</option> : equipmentList.map(eq => <option key={eq.id} value={eq.id}>{eq.name} ({eq.model})</option>)}
+                        </select>
+                        {sample.type === '위판장' && (
+                            <label className="flex items-center">
+                                <input type="checkbox" checked={isNotApplicable} onChange={(e) => setIsNotApplicable(e.target.checked)} className="h-4 w-4" />
+                                <span className="ml-2">해당없음</span>
+                            </label>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <div className="border-t pt-4">
+                <h4 className="text-lg font-semibold mb-2">전자결재</h4>
+                <div className="border rounded-lg p-4 grid grid-cols-1 md:grid-cols-4 gap-4 divide-x divide-gray-200">
+                    {[
+                        { title: '시료접수자', history: registrationHistory },
+                        { title: '시료수령자', history: receiveHistory },
+                        { title: '전처리수행자', history: prepHistory }
+                    ].map(({ title, history }) => (
+                        <div key={title} className="px-2">
+                            <h5 className="font-semibold text-center mb-2">{title}</h5>
+                            {history?.signature ? (
+                                <div className="mt-2 text-sm text-gray-600 space-y-1">
+                                    <p><strong>서명자:</strong> {history.signature.user}</p>
+                                    <p><strong>서명일시:</strong> {new Date(history.signature.datetime).toLocaleString()}</p>
+                                    <p><strong>위치기록:</strong> {history.signature.gps}</p>
+                                </div>
+                            ) : <p className="text-sm text-gray-500 mt-2 text-center">정보 없음</p>}
+                        </div>
+                    ))}
+                    <div className="px-2">
+                        <h5 className="font-semibold text-center mb-2">분석수행자</h5>
+                        {signature ? (
+                            <div className="mt-2 text-sm space-y-1">
+                                <p><strong>서명자:</strong> {signature.user}</p>
+                                <p><strong>서명일시:</strong> {signature.datetime.toLocaleString()}</p>
+                                <p><strong>위치기록:</strong> {signature.gps ? `${signature.gps.lat.toFixed(5)}, ${signature.gps.lng.toFixed(5)}` : 'N/A'}</p>
+                            </div>
+                        ) : (
+                            <div className="mt-2 text-center">
+                                <button type="button" onClick={handleSign} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">서명하기</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <button onClick={handleComplete} disabled={isSubmitting || !signature || !measurementDateTime || !measurementTime || !equipmentCode} className="mt-6 w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                {isSubmitting ? '처리 중...' : '분석 시작'}
+            </button>
+        </div>
+    );
+}
+
+function SampleAnalyzingScreen({ sample, userData, location, setSelectedSample, showMessage }) {
+
+    const [results, setResults] = useState([]);
+
+    const [newNuclideName, setNewNuclideName] = useState('');
+
+    const [signature, setSignature] = useState(null);
+
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const defaultNuclides = ['I-131', 'Cs-134', 'Cs-137', 'K-40'];
+
+
+
+    useEffect(() => {
+
+        if (sample.analysisType?.gamma) {
+
+            setResults([
+
+                { nuclide: 'I-131', isMda: false, mdaValue: '', activity: '', uncertainty: '' },
+
+                { nuclide: 'Cs-134', isMda: false, mdaValue: '', activity: '', uncertainty: '' },
+
+                { nuclide: 'Cs-137', isMda: false, mdaValue: '', activity: '', uncertainty: '' },
+
+                { nuclide: 'K-40', isMda: false, mdaValue: '', activity: '', uncertainty: '' },
+
+            ]);
+
+        }
+
+    }, [sample.analysisType]);
+
+
+
+    const handleResultChange = (index, field, value) => {
+
+        const newResults = [...results];
+
+        newResults[index][field] = value;
+
+        setResults(newResults);
+
+    };
+
+
+
+    const handleAddNuclide = () => {
+
+        if (newNuclideName && !results.find(r => r.nuclide === newNuclideName)) {
+
+            setResults([...results, { nuclide: newNuclideName, isMda: false, mdaValue: '', activity: '', uncertainty: '' }]);
+
+            setNewNuclideName('');
+
+        }
+
+    };
+
+
+
+    const handleRemoveNuclide = (indexToRemove) => {
+
+        setResults(results.filter((_, index) => index !== indexToRemove));
+
+    };
+
+
+
+    const handleSign = () => {
+
+        setSignature({
+
+            user: userData.name,
+
+            datetime: new Date(),
+
+            gps: location ? { lat: location.lat, lng: location.lng } : null
+
+        });
+
+    };
+
+
+
+    const handleComplete = async () => {
+
+        if (!signature) {
+
+            showMessage("전자결재 서명을 진행해주세요.");
+
+            return;
+
+        }
+
+        setIsSubmitting(true);
+
+        try {
+
+            const finalResults = results.map(r => ({
+
+                ...r,
+
+                activity: r.isMda ? `< ${r.mdaValue}` : r.activity
+
+            }));
+
+
+
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+
+            const newHistoryEntry = {
+
+                action: '분석평가',
+
+                user: userData.name,
+
+                userId: userData.uid,
+
+                timestamp: Timestamp.now(),
+
+                results: finalResults,
+
+                signature: {
+
+                    user: signature.user,
+
+                    datetime: signature.datetime.toISOString(),
+
+                    gps: signature.gps ? `${signature.gps.lat}, ${signature.gps.lng}` : 'N/A'
+
+                }
+
+            };
+
+
+
+            await updateDoc(sampleRef, {
+
+                status: 'analysis_done',
+
+                history: [...sample.history, newHistoryEntry]
+
+            });
+
+
+
+            showMessage("분석 평가가 완료되어 '분석 완료' 단계로 이동했습니다.");
+
+            setSelectedSample(null);
+
+        } catch (error) {
+
+            showMessage(`분석 평가 처리에 실패했습니다: ${error.message}`);
+
+        } finally {
+
+            setIsSubmitting(false);
+
+        }
+
+    };
+
+
+
+    const registrationHistory = sample.history?.find(h => h.action === '시료접수');
+
+    const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+
+    const prepHistory = sample.history?.find(h => h.action === '시료전처리');
+
+    const analysisHistory = sample.history?.find(h => h.action === '분석');
+
+
+
+    return (
+
+        <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
+
+            <div>
+
+                <button onClick={() => setSelectedSample(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로</button>
+
+                <h3 className="text-2xl font-bold">분석중: {sample.sampleCode}</h3>
+
+            </div>
+
+
+
+            <div className="border-t pt-4">
+
+                <h4 className="text-lg font-semibold mb-2">시료 정보</h4>
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+
+                    <p><strong>시료 ID:</strong> {sample.sampleCode}</p>
+
+                    <p><strong>시료분류:</strong> {sample.type}</p>
+
+                    <p><strong>품목명:</strong> {sample.itemName}</p>
+
+                    <p><strong>시료접수자:</strong> {sample.collectorName}</p>
+
+                    <p><strong>연락처:</strong> {sample.collectorContact}</p>
+
+                    <p><strong>접수검사소명:</strong> {sample.lab}</p>
+
+                    <p><strong>시료채취일:</strong> {sample.datetime}</p>
+
+                    <p><strong>채취장소:</strong> {sample.location}</p>
+
+                    <p><strong>시료량:</strong> {sample.sampleAmount} kg</p>
+
+                    <p><strong>시료조제무게:</strong> {prepHistory?.prepWeight || 'N/A'}</p>
+
+                    <p><strong>분석유형:</strong> {sample.analysisType ? Object.entries(sample.analysisType).filter(([, val]) => val).map(([key]) => key).join(', ') : 'N/A'}</p>
+
+                    <p><strong>계측일시:</strong> {analysisHistory?.measurementDateTime}</p>
+
+                    <p><strong>계측시간:</strong> {analysisHistory?.measurementTime}</p>
+
+                    <p><strong>장비코드:</strong> {analysisHistory?.equipmentCode}</p>
+
+                    <p className="col-span-full"><strong>추가정보:</strong> {sample.etc || 'N/A'}</p>
+
+                </div>
+
+                <div className="mt-4 space-y-2">
+
+                     {[{
+
+                        title: '시료채취사진',
+
+                        photos: [sample.photos?.photo1, sample.photos?.photo2]
+
+                    }, {
+
+                        title: '시료인수사진',
+
+                        photos: receiveHistory?.photos
+
+                    }, {
+
+                        title: '시료전처리사진',
+
+                        photos: prepHistory?.photos
+
+                    }].map(({
+
+                        title,
+
+                        photos
+
+                    }) => (
+
+                        <div key={title}>
+
+                            <strong>{title}:</strong>
+
+                            <div className="flex gap-4 mt-1">
+
+                                {photos?.length > 0 ? photos.filter(p => p).map((photo, index) => (
+
+                                    <a key={index} href={photo} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">사진 {index + 1} 보기</a>
+
+                                )) : <span>N/A</span>}
+
+                            </div>
+
+                        </div>
+
+                    ))}
+
+                </div>
+
+            </div>
+
+
+
+            <div className="border-t pt-4">
+
+                <h4 className="text-lg font-semibold mb-2">시료분석결과 입력</h4>
+
+                <div className="space-y-3">
+
+                    <div className="grid grid-cols-12 gap-2 items-center font-semibold text-sm px-2">
+
+                        <div className="col-span-2">핵종명</div>
+
+                        <div className="col-span-1 text-center">MDA</div>
+
+                        <div className="col-span-3">MDA 값</div>
+
+                        <div className="col-span-3">방사능 농도</div>
+
+                        <div className="col-span-1 text-center">±</div>
+
+                        <div className="col-span-2">불확도</div>
+
+                    </div>
+
+                    {results.map((res, index) => (
+
+                        <div key={index} className="grid grid-cols-12 gap-2 items-center">
+
+                            <div className="col-span-2 font-semibold">{res.nuclide}</div>
+
+                            <div className="col-span-1 flex justify-center">
+
+                                <input type="checkbox" checked={res.isMda} onChange={(e) => handleResultChange(index, 'isMda', e.target.checked)} className="h-4 w-4" />
+
+                            </div>
+
+                            <div className="col-span-3 flex items-center">
+
+                                {res.isMda && <span className="mr-1">{"<"}</span>}
+
+                                <input type="text" placeholder="MDA 값" value={res.mdaValue} onChange={(e) => handleResultChange(index, 'mdaValue', e.target.value)} disabled={!res.isMda} className="p-2 border rounded-md w-full disabled:bg-gray-100" />
+
+                            </div>
+
+                            <div className="col-span-3">
+
+                                <input type="text" placeholder="농도 값" value={res.activity} onChange={(e) => handleResultChange(index, 'activity', e.target.value)} disabled={res.isMda} className="p-2 border rounded-md w-full disabled:bg-gray-100" />
+
+                            </div>
+
+                            <div className="col-span-1 text-center">±</div>
+
+                            <div className="col-span-2">
+
+                                <input type="text" placeholder="불확도 값" value={res.uncertainty} onChange={(e) => handleResultChange(index, 'uncertainty', e.target.value)} disabled={res.isMda} className="p-2 border rounded-md w-full disabled:bg-gray-100" />
+
+                            </div>
+
+                            <button onClick={() => handleRemoveNuclide(index)} className="text-red-500">삭제</button>
+
+                        </div>
+
+                    ))}
+
+                </div>
+
+                <div className="mt-4 flex gap-2">
+
+                    <input type="text" value={newNuclideName} onChange={(e) => setNewNuclideName(e.target.value)} placeholder="핵종 추가" className="p-2 border rounded-md" />
+
+                    <button onClick={handleAddNuclide} className="bg-gray-200 px-4 rounded-md">추가</button>
+
+                </div>
+
+            </div>
+
+
+
+            <div className="border-t pt-4">
+
+                <h4 className="text-lg font-semibold mb-2">전자결재</h4>
+
+                <div className="border rounded-lg p-2 grid grid-cols-1 md:grid-cols-5 gap-2 divide-x divide-gray-200">
+
+                    {[{
+
+                        title: '시료접수자',
+
+                        history: registrationHistory
+
+                    }, {
+
+                        title: '시료수령자',
+
+                        history: receiveHistory
+
+                    }, {
+
+                        title: '전처리수행자',
+
+                        history: prepHistory
+
+                    }, {
+
+                        title: '분석수행자',
+
+                        history: analysisHistory
+
+                    }].map(({
+
+                        title,
+
+                        history
+
+                    }) => (
+
+                        <div key={title} className="px-2">
+
+                            <h5 className="font-semibold text-center mb-2 text-sm">{title}</h5>
+
+                            {history?.signature ? (
+
+                                <div className="mt-2 text-xs text-gray-600 space-y-1">
+
+                                    <p><strong>서명자:</strong> {history.signature.user}</p>
+
+                                    <p><strong>서명일시:</strong> {new Date(history.signature.datetime).toLocaleString()}</p>
+
+                                    <p><strong>위치기록:</strong> {history.signature.gps}</p>
+
+                                </div>
+
+                            ) : <p className="text-xs text-gray-500 mt-2 text-center">정보 없음</p>}
+
+                        </div>
+
+                    ))}
+
+                    <div className="px-2">
+
+                        <h5 className="font-semibold text-center mb-2 text-sm">분석평가자</h5>
+
+                        {signature ? (
+
+                            <div className="mt-2 text-xs space-y-1">
+
+                                <p><strong>서명자:</strong> {signature.user}</p>
+
+                                <p><strong>서명일시:</strong> {signature.datetime.toLocaleString()}</p>
+
+                                <p><strong>위치기록:</strong> {signature.gps ? `${signature.gps.lat.toFixed(5)}, ${signature.gps.lng.toFixed(5)}` : 'N/A'}</p>
+
+                            </div>
+
+                        ) : (
+
+                            <div className="mt-2 text-center">
+
+                                <button type="button" onClick={handleSign} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 text-sm">서명하기</button>
+
+                            </div>
+
+                        )}
+
+                    </div>
+
+                </div>
+
+            </div>
+
+
+
+            <button onClick={handleComplete} disabled={isSubmitting || !signature} className="mt-6 w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+
+                {isSubmitting ? '처리 중...' : '분석 평가 완료'}
+
+            </button>
+
+        </div>
+
+    );
+
+}
+
+
+
+function SampleAnalysisDoneScreen({ sample, userData, location, setSelectedSample, showMessage }) {
+
+
+
+    const [files, setFiles] = useState([]);
+
+
+
+    const [signature, setSignature] = useState(null);
+
+
+
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+
+
+    const [notificationDate, setNotificationDate] = useState('');
+
+
+
+    const reportRef = useRef();
+
+
+
+
+
+
+
+    const handleFileChange = (e) => {
+
+
+
+        if (e.target.files.length > 4) {
+
+
+
+            showMessage("파일은 최대 4개까지 업로드 가능합니다.");
+
+
+
+            e.target.value = null;
+
+
+
+            return;
+
+
+
+        }
+
+
+
+        setFiles(Array.from(e.target.files));
+
+
+
+    };
+
+
+
+
+
+
+
+    const handleSign = () => {
+
+
+
+        if (!notificationDate) {
+
+
+
+            showMessage("통보완료일시를 먼저 입력해주세요.");
+
+
+
+            return;
+
+
+
+        }
+
+
+
+        setSignature({
+
+
+
+            user: userData.name,
+
+
+
+            datetime: new Date(),
+
+
+
+            gps: location ? { lat: location.lat, lng: location.lng } : null
+
+
+
+        });
+
+
+
+    };
+
+
+
+
+
+
+
+    const handleGeneratePdf = async (action = 'download') => {
+
+
+
+        const { jsPDF } = await import('jspdf');
+
+
+
+        const html2canvas = (await import('html2canvas')).default;
+
+
+
+        
+
+
+
+        const input = reportRef.current;
+
+
+
+        if (!input) return;
+
+
+
+
+
+
+
+        try {
+
+
+
+            const canvas = await html2canvas(input, { scale: 2 });
+
+
+
+            const imgData = canvas.toDataURL('image/png');
+
+
+
+            const pdf = new jsPDF('p', 'mm', 'a4');
+
+
+
+            const pdfWidth = pdf.internal.pageSize.getWidth();
+
+
+
+            const pdfHeight = pdf.internal.pageSize.getHeight();
+
+
+
+            const canvasWidth = canvas.width;
+
+
+
+            const canvasHeight = canvas.height;
+
+
+
+            const ratio = canvasWidth / canvasHeight;
+
+
+
+            const width = pdfWidth;
+
+
+
+            const height = width / ratio;
+
+
+
+
+
+
+
+            pdf.addImage(imgData, 'PNG', 0, 0, width, height > pdfHeight ? pdfHeight : height);
+
+
+
+            
+
+
+
+            if (action === 'preview') {
+
+
+
+                window.open(pdf.output('bloburl'), '_blank');
+
+
+
+            } else {
+
+
+
+                pdf.save(`${sample.sampleCode}_분석결과서.pdf`);
+
+
+
+            }
+
+
+
+        } catch (error) {
+
+
+
+            showMessage("PDF 생성에 실패했습니다.");
+
+
+
+            console.error(error);
+
+
+
+        }
+
+
+
+    };
+
+
+
+
+
+
+
+    const handleComplete = async () => {
+
+
+
+        if (!signature) {
+
+
+
+            showMessage("결과통보완료 버튼을 눌러 서명을 진행해주세요.");
+
+
+
+            return;
+
+
+
+        }
+
+
+
+        setIsSubmitting(true);
+
+
+
+        try {
+
+
+
+            const fileURLs = await Promise.all(
+
+
+
+                files.map(async (file) => {
+
+
+
+                    const storageRef = ref(storage, `samples/${sample.sampleCode}/report_attachments/${file.name}`);
+
+
+
+                    await uploadBytes(storageRef, file);
+
+
+
+                    return await getDownloadURL(storageRef);
+
+
+
+                })
+
+
+
+            );
+
+
+
+
+
+
+
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+
+
+
+            const newHistoryEntry = {
+
+
+
+                action: '결과통보',
+
+
+
+                user: userData.name,
+
+
+
+                userId: userData.uid,
+
+
+
+                timestamp: Timestamp.now(),
+
+
+
+                attachments: fileURLs,
+
+
+
+                notificationDate,
+
+
+
+                signature: {
+
+
+
+                    user: signature.user,
+
+
+
+                    datetime: signature.datetime.toISOString(),
+
+
+
+                    gps: signature.gps ? `${signature.gps.lat}, ${signature.gps.lng}` : 'N/A'
+
+
+
+                }
+
+
+
+            };
+
+
+
+
+
+
+
+            await updateDoc(sampleRef, {
+
+
+
+                status: 'tech_review_wait',
+
+
+
+                history: [...sample.history, newHistoryEntry]
+
+
+
+            });
+
+
+
+
+
+
+
+            showMessage("분석이 완료되어 '기술책임자 검토' 단계로 이동했습니다.");
+
+
+
+            setSelectedSample(null);
+
+
+
+        } catch (error) {
+
+
+
+            showMessage(`처리 실패: ${error.message}`);
+
+
+
+        } finally {
+
+
+
+            setIsSubmitting(false);
+
+
+
+        }
+
+
+
+    };
+
+
+
+
+
+
+
+    const registrationHistory = sample.history?.find(h => h.action === '시료접수');
+
+
+
+    const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+
+
+
+    const prepHistory = sample.history?.find(h => h.action === '시료전처리');
+
+
+
+    const analysisHistory = sample.history?.find(h => h.action === '분석');
+
+
+
+    const evaluationHistory = sample.history?.find(h => h.action === '분석평가');
+
+
+
+
+
+
+
+    return (
+
+
+
+        <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
+
+
+
+            {/* Hidden PDF Template */}
+
+
+
+            <div style={{ position: 'absolute', left: '-9999px', width: '210mm', minHeight: '297mm', fontFamily: 'sans-serif', backgroundColor: 'white', color: 'black' }}>
+
+
+
+                <div ref={reportRef} className="p-8">
+
+
+
+                    <h1 className="text-2xl font-bold text-center my-6">(예비)방사능분석 결과서</h1>
+
+
+
+                    <table className="w-full border-collapse border border-gray-400 text-sm">
+
+
+
+                        <tbody>
+
+
+
+                            <tr>
+
+
+
+                                <td className="border border-gray-400 p-2 font-semibold bg-gray-100 w-1/4">품목명</td>
+
+
+
+                                <td className="border border-gray-400 p-2" colSpan="3">{sample.itemName}</td>
+
+
+
+                            </tr>
+
+
+
+                            <tr>
+
+
+
+                                <td className="border border-gray-400 p-2 font-semibold bg-gray-100">시료채취일</td>
+
+
+
+                                <td className="border border-gray-400 p-2">{sample.datetime}</td>
+
+
+
+                                <td className="border border-gray-400 p-2 font-semibold bg-gray-100">채취장소</td>
+
+
+
+                                <td className="border border-gray-400 p-2">{sample.location}</td>
+
+
+
+                            </tr>
+
+
+
+                            <tr>
+
+
+
+                                <td className="border border-gray-400 p-2 font-semibold bg-gray-100">계측시간</td>
+
+
+
+                                <td className="border border-gray-400 p-2" colSpan="3">{analysisHistory?.measurementTime}</td>
+
+
+
+                            </tr>
+
+
+
+                            <tr>
+
+
+
+                                <td className="border border-gray-400 p-2 font-semibold bg-gray-100 text-center" colSpan="4">핵종분석값 (Bq/kg)</td>
+
+
+
+                            </tr>
+
+
+
+                            <tr>
+
+
+
+                                <td className="border border-gray-400 p-2 font-semibold bg-gray-100 text-center">핵종</td>
+
+
+
+                                <td className="border border-gray-400 p-2 font-semibold bg-gray-100 text-center" colSpan="2">방사능 농도</td>
+
+
+
+                                <td className="border border-gray-400 p-2 font-semibold bg-gray-100 text-center">불확도</td>
+
+
+
+                            </tr>
+
+
+
+                            {evaluationHistory?.results?.map((res, index) => (
+
+
+
+                                <tr key={index}>
+
+
+
+                                    <td className="border border-gray-400 p-2 text-center">{res.nuclide}</td>
+
+
+
+                                    <td className="border border-gray-400 p-2 text-center" colSpan="2">{res.activity}</td>
+
+
+
+                                    <td className="border border-gray-400 p-2 text-center">{res.isMda ? '-' : res.uncertainty}</td>
+
+
+
+                                </tr>
+
+
+
+                            ))}
+
+
+
+                        </tbody>
+
+
+
+                    </table>
+
+
+
+                    <div className="mt-20">
+
+
+
+                        <p className="text-lg text-right">발급년월일시: {new Date().toLocaleString()}</p>
+
+
+
+                        <div className="flex justify-around mt-10">
+
+
+
+                             <p className="text-xl">분석자: {analysisHistory?.signature?.user} (서명)</p>
+
+
+
+                             <p className="text-xl">분석평가자: {evaluationHistory?.signature?.user} (서명)</p>
+
+
+
+                        </div>
+
+
+
+                    </div>
+
+
+
+                </div>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            <div>
+
+
+
+                <button onClick={() => setSelectedSample(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로</button>
+
+
+
+                <h3 className="text-2xl font-bold">분석 완료: {sample.sampleCode}</h3>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            <div className="border-t pt-4">
+
+
+
+                <h4 className="text-lg font-semibold mb-2">시료 정보</h4>
+
+
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+
+
+
+                    <p><strong>시료 ID:</strong> {sample.sampleCode}</p>
+
+
+
+                    <p><strong>시료분류:</strong> {sample.type}</p>
+
+
+
+                    <p><strong>품목명:</strong> {sample.itemName}</p>
+
+
+
+                    <p><strong>시료접수자:</strong> {sample.collectorName}</p>
+
+
+
+                    <p><strong>연락처:</strong> {sample.collectorContact}</p>
+
+
+
+                    <p><strong>접수검사소명:</strong> {sample.lab}</p>
+
+
+
+                    <p><strong>시료채취일:</strong> {sample.datetime}</p>
+
+
+
+                    <p><strong>채취장소:</strong> {sample.location}</p>
+
+
+
+                    <p><strong>시료량:</strong> {sample.sampleAmount} kg</p>
+
+
+
+                    <p><strong>시료조제무게:</strong> {prepHistory?.prepWeight || 'N/A'}</p>
+
+
+
+                    <p><strong>분석유형:</strong> {sample.analysisType ? Object.entries(sample.analysisType).filter(([, val]) => val).map(([key]) => key).join(', ') : 'N/A'}</p>
+
+
+
+                    <p><strong>계측일시:</strong> {analysisHistory?.measurementDateTime}</p>
+
+
+
+                    <p><strong>계측시간:</strong> {analysisHistory?.measurementTime}</p>
+
+
+
+                    <p><strong>장비코드:</strong> {analysisHistory?.equipmentCode}</p>
+
+
+
+                    <p className="col-span-full"><strong>추가정보:</strong> {sample.etc || 'N/A'}</p>
+
+
+
+                </div>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            <div className="border-t pt-4">
+
+
+
+                <h4 className="text-lg font-semibold mb-2">분석결과</h4>
+
+
+
+                <div className="space-y-1 text-sm mb-4">
+
+
+
+                    {evaluationHistory?.results?.map((res, index) => (
+
+
+
+                        <p key={index}><strong>{res.nuclide}:</strong> {res.activity} {res.isMda ? '' : `± ${res.uncertainty}`} Bq/kg</p>
+
+
+
+                    ))}
+
+
+
+                </div>
+
+
+
+                <div className="mt-4 flex gap-4">
+
+
+
+                    <button onClick={() => handleGeneratePdf('preview')} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">결과서 미리보기</button>
+
+
+
+                    <button onClick={() => handleGeneratePdf('download')} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">결과서 PDF 다운로드</button>
+
+
+
+                </div>
+
+
+
+                <div className="mt-4 flex items-end gap-4">
+
+
+
+                    <div>
+
+
+
+                        <label htmlFor="notificationDate" className="block font-semibold text-sm mb-1">통보완료일시</label>
+
+
+
+                        <input type="datetime-local" id="notificationDate" value={notificationDate} onChange={(e) => setNotificationDate(e.target.value)} className="p-2 border rounded-md w-full" />
+
+
+
+                    </div>
+
+
+
+                    {!signature && <button type="button" onClick={handleSign} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">결과통보완료</button>}
+
+
+
+                </div>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            <div className="border-t pt-4">
+
+
+
+                <h4 className="text-lg font-semibold mb-2">레포트 파일(업로드) (최대 4건)</h4>
+
+
+
+                <input type="file" multiple onChange={handleFileChange} accept="image/*,.pdf,.txt" className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            <div className="border-t pt-4">
+
+
+
+                <h4 className="text-lg font-semibold mb-2">전자결재</h4>
+
+
+
+                <div className="border rounded-lg p-2 grid grid-cols-1 md:grid-cols-6 gap-1 divide-x divide-gray-200">
+
+
+
+                    {[
+
+
+
+                        { title: '시료접수자', history: registrationHistory },
+
+
+
+                        { title: '시료수령자', history: receiveHistory },
+
+
+
+                        { title: '전처리수행자', history: prepHistory },
+
+
+
+                        { title: '분석수행자', history: analysisHistory },
+
+
+
+                        { title: '분석평가자', history: evaluationHistory }
+
+
+
+                    ].map(({ title, history }) => (
+
+
+
+                        <div key={title} className="px-1">
+
+
+
+                            <h5 className="font-semibold text-center mb-2 text-sm">{title}</h5>
+
+
+
+                            {history?.signature ? (
+
+
+
+                                <div className="mt-2 text-xs text-gray-600 space-y-1">
+
+
+
+                                    <p><strong>서명자:</strong> {history.signature.user}</p>
+
+
+
+                                    <p><strong>서명일시:</strong> {new Date(history.signature.datetime).toLocaleString()}</p>
+
+
+
+                                    <p><strong>위치기록:</strong> {history.signature.gps}</p>
+
+
+
+                                </div>
+
+
+
+                            ) : <p className="text-xs text-gray-500 mt-2 text-center">정보 없음</p>}
+
+
+
+                        </div>
+
+
+
+                    ))}
+
+
+
+                    <div className="px-1">
+
+
+
+                        <h5 className="font-semibold text-center mb-2 text-sm">결과통보자</h5>
+
+
+
+                        {signature ? (
+
+
+
+                            <div className="mt-2 text-xs space-y-1">
+
+
+
+                                <p><strong>서명자:</strong> {signature.user}</p>
+
+
+
+                                <p><strong>서명일시:</strong> {signature.datetime.toLocaleString()}</p>
+
+
+
+                                <p><strong>위치기록:</strong> {signature.gps ? `${signature.gps.lat.toFixed(5)}, ${signature.gps.lng.toFixed(5)}` : 'N/A'}</p>
+
+
+
+                            </div>
+
+
+
+                        ) : <p className="text-xs text-gray-500 mt-2 text-center">대기중</p>}
+
+
+
+                    </div>
+
+
+
+                </div>
+
+
+
+            </div>
+
+
+
+
+
+
+
+            <button onClick={handleComplete} disabled={isSubmitting || !signature} className="mt-6 w-full bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+
+
+
+                {isSubmitting ? '처리 중...' : '기술책임자 검토요청'}
+
+
+
+            </button>
+
+
+
+        </div>
+
+
+
+    );
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+function SampleTechReviewScreen({ sample, userData, location, setSelectedSample, showMessage }) {
+
+
+
+
+
+
+
+    const [formData, setFormData] = useState({});
+
+
+
+
+
+
+
+    const [originalData, setOriginalData] = useState({});
+
+
+
+
+
+
+
+    const [signature, setSignature] = useState(null);
+
+
+
+
+
+
+
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    const fieldsToEdit = [
+
+
+
+
+
+
+
+        { key: 'itemName', label: '품목명' },
+
+
+
+
+
+
+
+        { key: 'collectorName', label: '시료접수자' },
+
+
+
+
+
+
+
+        { key: 'collectorContact', label: '연락처' },
+
+
+
+
+
+
+
+        { key: 'lab', label: '접수검사소명' },
+
+
+
+
+
+
+
+        { key: 'datetime', label: '시료채취일', type: 'datetime-local' },
+
+
+
+
+
+
+
+        { key: 'location', label: '채취장소' },
+
+
+
+
+
+
+
+        { key: 'sampleAmount', label: '시료량(kg)' },
+
+
+
+
+
+
+
+        { key: 'etc', label: '추가정보' },
+
+
+
+
+
+
+
+        { key: 'measurementDateTime', label: '계측일시', type: 'datetime-local' },
+
+
+
+
+
+
+
+        { key: 'measurementTime', label: '계측시간' },
+
+
+
+
+
+
+
+        { key: 'notificationDate', label: '시료통보일시', type: 'datetime-local' },
+
+
+
+
+
+
+
+    ];
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    useEffect(() => {
+
+
+
+
+
+
+
+        const analysisHistory = sample.history?.find(h => h.action === '분석');
+
+
+
+
+
+
+
+        const notificationHistory = sample.history?.find(h => h.action === '결과통보');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        const initialData = {
+
+
+
+
+
+
+
+            sampleCode: sample.sampleCode,
+
+
+
+
+
+
+
+            type: sample.type,
+
+
+
+
+
+
+
+            itemName: sample.itemName,
+
+
+
+
+
+
+
+            collectorName: sample.collectorName,
+
+
+
+
+
+
+
+            collectorContact: sample.collectorName,
+
+
+
+
+
+
+
+            lab: sample.lab,
+
+
+
+
+
+
+
+            datetime: sample.datetime,
+
+
+
+
+
+
+
+            location: sample.location,
+
+
+
+
+
+
+
+            sampleAmount: sample.sampleAmount,
+
+
+
+
+
+
+
+            etc: sample.etc,
+
+
+
+
+
+
+
+            measurementDateTime: analysisHistory?.measurementDateTime || '',
+
+
+
+
+
+
+
+            measurementTime: analysisHistory?.measurementTime || '',
+
+
+
+
+
+
+
+            notificationDate: notificationHistory?.notificationDate || '',
+
+
+
+
+
+
+
+        };
+
+
+
+
+
+
+
+        setFormData(initialData);
+
+
+
+
+
+
+
+        setOriginalData(initialData);
+
+
+
+
+
+
+
+    }, [sample]);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    const handleInputChange = (e) => {
+
+
+
+
+
+
+
+        const { name, value } = e.target;
+
+
+
+
+
+
+
+        setFormData(prev => ({ ...prev, [name]: value }));
+
+
+
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    const handleSign = () => {
+
+
+
+
+
+
+
+        setSignature({
+
+
+
+
+
+
+
+            user: userData.name,
+
+
+
+
+
+
+
+            datetime: new Date(),
+
+
+
+
+
+
+
+            gps: location ? { lat: location.lat, lng: location.lng } : null
+
+
+
+
+
+
+
+        });
+
+
+
+
+
+
+
+    };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    const handleComplete = async () => {
+
+
+
+
+
+
+
+        if (!signature) {
+
+
+
+
+
+
+
+            showMessage("기술책임자 서명을 진행해주세요.");
+
+
+
+
+
+
+
+            return;
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+        setIsSubmitting(true);
+
+
+
+
+
+
+
+        try {
+
+
+
+
+
+
+
+            const changes = Object.keys(formData).reduce((acc, key) => {
+
+
+
+
+
+
+
+                if (formData[key] !== originalData[key]) {
+
+
+
+
+
+
+
+                    acc[key] = { from: originalData[key], to: formData[key] };
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+                return acc;
+
+
+
+
+
+
+
+            }, {});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+
+
+
+
+
+
+
+            const newHistoryEntry = {
+
+
+
+
+
+
+
+                action: '기술책임자검토',
+
+
+
+
+
+
+
+                user: userData.name,
+
+
+
+
+
+
+
+                userId: userData.uid,
+
+
+
+
+
+
+
+                timestamp: Timestamp.now(),
+
+
+
+
+
+
+
+                changes,
+
+
+
+
+
+
+
+                signature: {
+
+
+
+
+
+
+
+                    user: signature.user,
+
+
+
+
+
+
+
+                    datetime: signature.datetime.toISOString(),
+
+
+
+
+
+
+
+                    gps: signature.gps ? `${signature.gps.lat}, ${signature.gps.lng}` : 'N/A'
+
+
+
+
+
+
+
+                }
+
+
+
+
+
+
+
+            };
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            const updateData = {
+
+
+
+
+
+
+
+                history: [...sample.history, newHistoryEntry],
+
+
+
+
+
+
+
+                status: 'assoc_review_wait',
+
+
+
+
+
+
+
+            };
+
+
+
+
+
+
+
+            for (const key in changes) {
+
+
+
+
+
+
+
+                updateData[key] = changes[key].to;
+
+
+
+
+
+
+
+            }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            await updateDoc(sampleRef, updateData);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            showMessage("기술책임자 검토가 완료되어 '협회 검토' 단계로 이동했습니다.");
+
+
+
+
+
+
+
+            setSelectedSample(null);
+
+
+
+
+
+
+
+        } catch (error) {
+
+
+
+
+
+
+
+            showMessage(`처리 실패: ${error.message}`);
+
+
+
+
+
+
+
+        } finally {
+
+
+
+
+
+
+
+            setIsSubmitting(false);
+
+
+
+
+
+
+
+        }
+
+
+
+
+
+
+
+    };
+
+
+
+
+
+
+
+    
+
+
+
+
+
+
+
+    const allHistory = sample.history || [];
+
+
+
+
+
+
+
+    const getHistory = (action) => allHistory.find(h => h.action === action);
+
+
+
+
+
+
+
+    const prepHistory = getHistory('시료전처리');
+
+
+
+
+
+
+
+    const receiveHistory = getHistory('시료수령');
+
+
+
+
+
+
+
+    const notificationHistory = getHistory('결과통보');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    return (
+
+
+
+
+
+
+
+        <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
+
+
+
+
+
+
+
+            <div>
+
+
+
+
+
+
+
+                <button onClick={() => setSelectedSample(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로</button>
+
+
+
+
+
+
+
+                <h3 className="text-2xl font-bold">기술책임자 검토: {formData.sampleCode}</h3>
+
+
+
+
+
+
+
+            </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            <div className="border-t pt-4">
+
+
+
+
+
+
+
+                <h4 className="text-lg font-semibold mb-2">시료 정보 (수정 가능)</h4>
+
+
+
+
+
+
+
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+
+
+
+
+
+
+
+                    {fieldsToEdit.map(field => (
+
+
+
+
+
+
+
+                        <div key={field.key}>
+
+
+
+
+
+
+
+                            <label className="block font-semibold">{field.label}</label>
+
+
+
+
+
+
+
+                            <input 
+
+
+
+
+
+
+
+                                type={field.type || 'text'}
+
+
+
+
+
+
+
+                                name={field.key} 
+
+
+
+
+
+
+
+                                value={formData[field.key] || ''} 
+
+
+
+
+
+
+
+                                onChange={handleInputChange} 
+
+
+
+
+
+
+
+                                className="p-2 border rounded-md w-full" 
+
+
+
+
+
+
+
+                            />
+
+
+
+
+
+
+
+                        </div>
+
+
+
+
+
+
+
+                    ))}
+
+
+
+
+
+
+
+                </div>
+
+
+
+
+
+
+
+                <div className="mt-4 space-y-2">
+
+
+
+
+
+
+
+                    {[{
+
+
+
+
+
+
+
+                        title: '시료채취사진',
+
+
+
+
+
+
+
+                        photos: [sample.photos?.photo1, sample.photos?.photo2]
+
+
+
+
+
+
+
+                    }, {
+
+
+
+
+
+
+
+                        title: '시료인수사진',
+
+
+
+
+
+
+
+                        photos: receiveHistory?.photos
+
+
+
+
+
+
+
+                    }, {
+
+
+
+
+
+
+
+                        title: '시료전처리사진',
+
+
+
+
+
+
+
+                        photos: prepHistory?.photos
+
+
+
+
+
+
+
+                    }, {
+
+
+
+
+
+
+
+                        title: '레포트 파일',
+
+
+
+
+
+
+
+                        photos: notificationHistory?.attachments
+
+
+
+
+
+
+
+                    }].map(({ title, photos }) => (
+
+
+
+
+
+
+
+                        <div key={title}>
+
+
+
+
+
+
+
+                            <strong>{title}:</strong>
+
+
+
+
+
+
+
+                            <div className="flex gap-4 mt-1">
+
+
+
+
+
+
+
+                                {photos?.length > 0 ? photos.filter(p => p).map((photo, index) => (
+
+
+
+
+
+
+
+                                    <a key={index} href={photo} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">파일 {index + 1} 보기</a>
+
+
+
+
+
+
+
+                                )) : <span>N/A</span>}
+
+
+
+
+
+
+
+                            </div>
+
+
+
+
+
+
+
+                        </div>
+
+
+
+
+
+
+
+                    ))}
+
+
+
+
+
+
+
+                </div>
+
+
+
+
+
+
+
+            </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            <div className="border-t pt-4">
+
+
+
+
+
+
+
+                <h4 className="text-lg font-semibold mb-2">전자결재</h4>
+
+
+
+
+
+
+
+                <div className="border rounded-lg p-2 grid grid-cols-1 md:grid-cols-7 gap-1 divide-x divide-gray-200">
+
+
+
+
+
+
+
+                    {[{
+
+
+
+
+
+
+
+                        title: '시료접수자',
+
+
+
+
+
+
+
+                        history: getHistory('시료접수')
+
+
+
+
+
+
+
+                    }, {
+
+
+
+
+
+
+
+                        title: '시료수령자',
+
+
+
+
+
+
+
+                        history: getHistory('시료수령')
+
+
+
+
+
+
+
+                    }, {
+
+
+
+
+
+
+
+                        title: '전처리수행자',
+
+
+
+
+
+
+
+                        history: getHistory('시료전처리')
+
+
+
+
+
+
+
+                    }, {
+
+
+
+
+
+
+
+                        title: '분석수행자',
+
+
+
+
+
+
+
+                        history: getHistory('분석')
+
+
+
+
+
+
+
+                    }, {
+
+
+
+
+
+
+
+                        title: '분석평가자',
+
+
+
+
+
+
+
+                        history: getHistory('분석평가')
+
+
+
+
+
+
+
+                    }, {
+
+
+
+
+
+
+
+                        title: '결과통보자',
+
+
+
+
+
+
+
+                        history: getHistory('결과통보')
+
+
+
+
+
+
+
+                    }].map(({ title, history }) => (
+
+
+
+
+
+
+
+                        <div key={title} className="px-1">
+
+
+
+
+
+
+
+                            <h5 className="font-semibold text-center mb-2 text-sm">{title}</h5>
+
+
+
+
+
+
+
+                            {history?.signature ? (
+
+
+
+
+
+
+
+                                <div className="mt-2 text-xs text-gray-600 space-y-1">
+
+
+
+
+
+
+
+                                    <p><strong>서명자:</strong> {history.signature.user}</p>
+
+
+
+
+
+
+
+                                    <p><strong>서명일시:</strong> {new Date(history.signature.datetime).toLocaleString()}</p>
+
+
+
+
+
+
+
+                                    <p><strong>위치기록:</strong> {history.signature.gps}</p>
+
+
+
+
+
+
+
+                                </div>
+
+
+
+
+
+
+
+                            ) : <p className="text-xs text-gray-500 mt-2 text-center">정보 없음</p>}
+
+
+
+
+
+
+
+                        </div>
+
+
+
+
+
+
+
+                    ))}
+
+
+
+
+
+
+
+                    <div className="px-1">
+
+
+
+
+
+
+
+                        <h5 className="font-semibold text-center mb-2 text-sm">기술책임자</h5>
+
+
+
+
+
+
+
+                        {signature ? (
+
+
+
+
+
+
+
+                            <div className="mt-2 text-xs space-y-1">
+
+
+
+
+
+
+
+                                <p><strong>서명자:</strong> {signature.user}</p>
+
+
+
+
+
+
+
+                                <p><strong>서명일시:</strong> {signature.datetime.toLocaleString()}</p>
+
+
+
+
+
+
+
+                                <p><strong>위치기록:</strong> {signature.gps ? `${signature.gps.lat.toFixed(5)}, ${signature.gps.lng.toFixed(5)}` : 'N/A'}</p>
+
+
+
+
+
+
+
+                            </div>
+
+
+
+
+
+
+
+                        ) : (
+
+
+
+
+
+
+
+                            <div className="mt-2 text-center">
+
+
+
+
+
+
+
+                                <button type="button" onClick={handleSign} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300 text-sm">서명하기</button>
+
+
+
+
+
+
+
+                            </div>
+
+
+
+
+
+
+
+                        )}
+
+
+
+
+
+
+
+                    </div>
+
+
+
+
+
+
+
+                </div>
+
+
+
+
+
+
+
+            </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+            <button onClick={handleComplete} disabled={isSubmitting || !signature} className="mt-6 w-full bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+
+
+
+
+
+
+
+                {isSubmitting ? '처리 중...' : '협회 검토 요청'}
+
+
+
+
+
+
+
+            </button>
+
+
+
+
+
+
+
+        </div>
+
+
+
+
+
+
+
+    );
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function ControlDashboard({ userData }) {
+
     const [notices, setNotices] = useState([]);
+
     const [isLoading, setIsLoading] = useState(true);
     const [selectedNotice, setSelectedNotice] = useState(null);
     const [message, setMessage] = useState('');
