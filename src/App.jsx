@@ -21,6 +21,8 @@ import {
     query, 
     where, 
     updateDoc,
+    deleteDoc,
+    orderBy,
     Timestamp
 } from 'firebase/firestore';
 import { 
@@ -30,10 +32,11 @@ import {
     getDownloadURL 
 } from 'firebase/storage';
 import logo from './assets/logo.png';
+import * as XLSX from 'xlsx';
+import NoticeBoard from './NoticeBoard';
 
 // --- Firebase 설정 ---
-// VS Code로 이전 시, 이 정보를 .env 파일로 옮겨 보안을 강화하는 것을 권장합니다.
-  const firebaseConfig = {
+const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
     authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
     projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
@@ -53,14 +56,11 @@ try {
     auth = getAuth(app);
     db = getFirestore(app);
     storage = getStorage(app);
-    console.log(`[진단] Firebase가 프로젝트 ID '${firebaseConfig.projectId}'로 성공적으로 초기화되었습니다.`);
 } catch (error) {
     console.error("[진단][오류] Firebase 초기화 실패:", error);
 }
 
-// --- 앱 아이디 설정 ---
 const appId = 'default-kora-blue-app';
-
 
 // --- 메인 앱 컴포넌트 ---
 export default function App() {
@@ -86,7 +86,7 @@ export default function App() {
                         setUser(user);
                         setUserData(docSnap.data());
                     } else {
-                        setLoginError(`로그인 성공, 그러나 Firestore에서 사용자 정보를 찾을 수 없습니다. (UID: ${user.uid}). 관리자에게 문의하여 데이터베이스 설정을 확인하세요.`);
+                        setLoginError(`로그인 성공, 그러나 Firestore에서 사용자 정보를 찾을 수 없습니다.`);
                         await signOut(auth);
                     }
                 } catch (error) {
@@ -104,14 +104,15 @@ export default function App() {
     }, [isDemoMode]);
 
     const handleDemoLogin = (role) => {
-        const demoUser = { uid: `demo-${role.toLowerCase()}`, isAnonymous: false };
+        const demoUser = { uid: `demo-${role.toLowerCase()}`, isAnonymous: false, displayName: `${role} (데모)` };
         const demoUserData = {
             name: `${role} (데모)`,
             email: `${role.toLowerCase()}@demo.com`,
             organization: '데모기관',
             position: '데모직급',
             qualificationLevel: role,
-            uid: `demo-${role.toLowerCase()}`
+            uid: `demo-${role.toLowerCase()}`,
+            inspectionOffice: role === '관리자' ? ['데모검사소', '테스트2'] : ['데모검사소']
         };
         setUser(demoUser);
         setUserData(demoUserData);
@@ -130,27 +131,12 @@ export default function App() {
         }
     };
 
-    if (loading) {
-        return <div className="flex items-center justify-center h-screen bg-gray-100"><div className="text-xl font-bold">로딩 중...</div></div>;
-    }
-
-    if (!user || !userData) {
-        return <LoginScreen initialError={loginError} onDemoLogin={handleDemoLogin} />;
-    }
-
-    if (!appMode) {
-        return <ModeSelectionScreen setAppMode={setAppMode} userData={userData} onLogout={handleLogout} />;
-    }
-
-    if (appMode === 'control') {
-        return <ControlSystemApp userData={userData} setAppMode={setAppMode} onLogout={handleLogout} />;
-    }
-
-    if (appMode === 'analysis') {
-        return <AnalysisSystemApp userData={userData} setAppMode={setAppMode} onLogout={handleLogout} />;
-    }
+    if (loading) return <div className="flex items-center justify-center h-screen bg-gray-100"><div className="text-xl font-bold">로딩 중...</div></div>;
+    if (!user || !userData) return <LoginScreen initialError={loginError} onDemoLogin={handleDemoLogin} />;
+    if (!appMode) return <ModeSelectionScreen setAppMode={setAppMode} userData={userData} onLogout={handleLogout} />;
+    if (appMode === 'control') return <ControlSystemApp userData={userData} setAppMode={setAppMode} onLogout={handleLogout} />;
+    if (appMode === 'analysis') return <AnalysisSystemApp userData={userData} setAppMode={setAppMode} onLogout={handleLogout} />;
 }
-
 
 // --- 화면 컴포넌트들 ---
 
@@ -161,13 +147,6 @@ function LoginScreen({ initialError, onDemoLogin }) {
     const [message, setMessage] = useState('');
     const [isLoggingIn, setIsLoggingIn] = useState(false);
     const [demoRole, setDemoRole] = useState('관리자');
-
-    useEffect(() => {
-        if (initialError) {
-            setError(initialError);
-            setIsLoggingIn(false); 
-        }
-    }, [initialError]);
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -183,10 +162,7 @@ function LoginScreen({ initialError, onDemoLogin }) {
     };
     
     const handlePasswordReset = async () => {
-        if (!email) {
-            setError("비밀번호를 재설정할 이메일 주소를 입력해주세요.");
-            return;
-        }
+        if (!email) { setError("비밀번호를 재설정할 이메일 주소를 입력해주세요."); return; }
         setError('');
         setMessage('');
         try {
@@ -197,58 +173,35 @@ function LoginScreen({ initialError, onDemoLogin }) {
         }
     };
 
-    const handleDemoButtonClick = () => {
-        onDemoLogin(demoRole);
-    };
-
     return (
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
             <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 sm:p-8 space-y-6">
                 <div className="text-center">
                     <img src={logo} alt="logo" className="mx-auto h-16 w-auto mb-4" />
-                    <h1 className="text-3xl font-bold text-gray-800">RadAn-Net</h1>
-                    <p className="text-gray-500">수산물 방사능 분석 관제 시스템</p>
-                    <div className="mt-2 text-sm text-gray-400">By KoRA</div>
+                    <h1 className="text-3xl font-bold text-gray-800">수산물 방사능분석 플랫폼</h1>
+                    <p className="text-gray-500">RadAn-Platform : Marine Products</p>
+                    <div className="mt-2 text-sm text-gray-400">해양수산부·(사)한국방사능분석협회</div>
                 </div>
                 {error && <p className="text-red-500 text-sm text-center bg-red-100 p-3 rounded-lg">{error}</p>}
                 {message && <p className="text-green-500 text-sm text-center bg-green-100 p-3 rounded-lg">{message}</p>}
                 
                 <form onSubmit={handleLogin} className="space-y-6">
-                    <div>
-                        <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="이메일 주소" required className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
-                    </div>
-                    <div>
-                        <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" required className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500 transition" />
-                    </div>
-                    <button type="submit" disabled={isLoggingIn} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition-transform transform hover:scale-105 disabled:bg-gray-400 disabled:cursor-not-allowed">
-                        {isLoggingIn ? '로그인 중...' : '로그인'}
-                    </button>
+                    <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="이메일 주소" required className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" required className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <button type="submit" disabled={isLoggingIn} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">{isLoggingIn ? '로그인 중...' : '로그인'}</button>
                 </form>
-                 <div className="text-center">
-                    <button onClick={handlePasswordReset} className="text-sm text-blue-600 hover:underline">
-                        비밀번호를 잊으셨나요?
-                    </button>
-                </div>
+                 <div className="text-center"><button onClick={handlePasswordReset} className="text-sm text-blue-600 hover:underline">비밀번호를 잊으셨나요?</button></div>
 
-                {/* --- 데모 모드 섹션 --- */}
                 <div className="relative my-4">
                     <div className="absolute inset-0 flex items-center"><span className="w-full border-t"></span></div>
                     <div className="relative flex justify-center text-sm"><span className="bg-white px-2 text-gray-500">또는</span></div>
                 </div>
                 <div className="space-y-3">
                     <p className="text-center text-sm text-gray-600">데모 모드로 접속하기</p>
-                    <select value={demoRole} onChange={(e) => setDemoRole(e.target.value)} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500 transition">
-                        <option>관리자</option>
-                        <option>시료채취원</option>
-                        <option>분석원</option>
-                        <option>분석보조원</option>
-                        <option>기술책임자</option>
-                        <option>해수부</option>
-                        <option>협회</option>
+                    <select value={demoRole} onChange={(e) => setDemoRole(e.target.value)} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500">
+                        {['관리자', '시료채취원', '분석원', '분석보조원', '기술책임자', '해수부', '협회'].map(r => <option key={r}>{r}</option>)}
                     </select>
-                    <button onClick={handleDemoButtonClick} className="w-full bg-teal-500 text-white font-bold py-3 rounded-lg hover:bg-teal-600 transition">
-                        {demoRole} (으)로 데모 접속
-                    </button>
+                    <button onClick={() => onDemoLogin(demoRole)} className="w-full bg-teal-500 text-white font-bold py-3 rounded-lg hover:bg-teal-600">{demoRole} (으)로 데모 접속</button>
                 </div>
             </div>
         </div>
@@ -261,176 +214,210 @@ function ModeSelectionScreen({ setAppMode, userData, onLogout }) {
     return (
         <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
             <div className="text-center p-8 bg-white shadow-lg rounded-lg w-full max-w-lg">
+                <img src={logo} alt="logo" className="mx-auto h-36 w-auto mb-6" />
                 <h1 className="text-2xl sm:text-3xl font-bold mb-2">안녕하세요, {userData.name}님!</h1>
                 <p className="mb-6 text-gray-600">접속할 모드를 선택해주세요.</p>
                 <div className="flex flex-col sm:flex-row gap-4">
                     {canAccessControlMode && (
-                         <button onClick={() => setAppMode('control')} className="flex-1 bg-indigo-600 text-white font-bold py-4 px-6 rounded-lg hover:bg-indigo-700 transition">
-                            <h2 className="text-xl">관제 모드</h2><p className="text-sm">(RadAn-Net)</p>
+                         <button onClick={() => setAppMode('control')} className="flex-1 bg-indigo-600 text-white font-bold py-4 px-6 rounded-lg hover:bg-indigo-700">
+                            <div>
+                                <h2 className="text-xl font-bold">관제 모드</h2>
+                                <p className="text-sm">(RadAn-Net)</p>
+                            </div>
                         </button>
                     )}
-                    <button onClick={() => setAppMode('analysis')} className="flex-1 bg-teal-500 text-white font-bold py-4 px-6 rounded-lg hover:bg-teal-600 transition">
-                        <h2 className="text-xl">분석 모드</h2><p className="text-sm">(RadAn-Flow)</p>
+                    <button onClick={() => setAppMode('analysis')} className="flex-1 bg-teal-500 text-white font-bold py-4 px-6 rounded-lg hover:bg-teal-600">
+                        <div>
+                            <h2 className="text-xl font-bold">분석 모드</h2>
+                            <p className="text-sm">(RadAn-Flow)</p>
+                        </div>
                     </button>
                 </div>
-                 <button onClick={onLogout} className="mt-8 text-gray-500 hover:text-gray-700 transition">
-                    로그아웃
-                </button>
+                 <button onClick={onLogout} className="mt-8 text-gray-500 hover:text-gray-700">로그아웃</button>
             </div>
         </div>
     );
 }
 
-// --- 모바일 사이드바 래퍼 ---
 function AppShell({ children, pageTitle, userData, setAppMode, onLogout, onNavClick, currentPage }) {
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    
-    const navItems = {
-        analysis: ['HOME', '분석관리', '근무기록', '점검관리', '이력관리'],
-        control: ['대시보드', ...(userData.qualificationLevel === '관리자' ? ['관리자 설정'] : [])]
-    };
+    const [openMenu, setOpenMenu] = useState('admin_settings'); // Default open menu
 
-    const pageIdMap = {
-        'HOME': 'home', '분석관리': 'analysis', '근무기록': 'work',
-        '점검관리': 'inspection', '이력관리': 'history', '대시보드': 'dashboard',
-        '관리자 설정': 'settings'
+    const navMenu = {
+        analysis: [
+            { id: 'home', title: '메인' },
+            { id: 'analysis', title: '분석관리' },
+            { id: 'receipt_status', title: '접수현황' },
+            { id: 'work', title: '근무기록' },
+            { id: 'inspection', title: '점검관리' },
+            { id: 'history', title: '이력관리' },
+        ],
+        control: [
+            { id: 'dashboard', title: '대시보드' },
+            { id: 'progress', title: '진행현황' },
+            { id: 'analysis_results', title: '분석결과' },
+            { id: 'agency_info_page', title: '기관정보' },
+            {
+                id: 'admin_settings', title: '관리자설정', sub: [
+                    { id: 'settings', title: '회원관리' },
+                    { id: 'equipment', title: '장비이력관리' },
+                    { id: 'agencies', title: '분석기관관리' },
+                    { id: 'offices', title: '검사소관리' },
+                    { id: 'notice_board', title: '공지사항' },
+                ] 
+            },
+        ]
     };
 
     const appType = pageTitle === 'RadAn-Flow' ? 'analysis' : 'control';
+    const currentNavItems = navMenu[appType];
+
+    const handleNavClick = (id) => {
+        onNavClick(id);
+        setIsSidebarOpen(false);
+    };
+
+    const toggleSubMenu = (id) => {
+        setOpenMenu(openMenu === id ? null : id);
+    };
+
+    const titles = {
+        'RadAn-Net': { main: '수산물 방사능분석\n관제시스템', sub: 'RadAn-Net : Marine Products' },
+        'RadAn-Flow': { main: '수산물 방사능분석\n절차관리', sub: 'RadAn-Flow : Marine Products' }
+    };
+    const titleInfo = titles[pageTitle] || { main: pageTitle, sub: '' };
+
+    const renderNav = (items) => (
+        <ul>
+            {items.map(item => (
+                <li key={item.id} className="mb-1">
+                    {item.sub ? (
+                        <>
+                            <button onClick={() => toggleSubMenu(item.id)} className="w-full flex justify-between items-center py-2 px-4 rounded-lg text-gray-600 hover:bg-gray-100">
+                                <span>{item.title}</span>
+                                <span>{openMenu === item.id ? '▲' : '▼'}</span>
+                            </button>
+                            {openMenu === item.id && (
+                                <ul className="pl-4 mt-1">
+                                    {item.sub.map(subItem => (
+                                        <li key={subItem.id} className="mb-1">
+                                            <a href="#" onClick={(e) => { e.preventDefault(); handleNavClick(subItem.id); }} className={`block py-2 px-4 rounded-lg ${currentPage === subItem.id ? 'bg-blue-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                                                {subItem.title}
+                                            </a>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </>
+                    ) : (
+                        <a href="#" onClick={(e) => { e.preventDefault(); handleNavClick(item.id); }} className={`block py-2 px-4 rounded-lg ${currentPage === item.id ? 'bg-blue-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
+                            {item.title}
+                        </a>
+                    )}
+                </li>
+            ))}
+        </ul>
+    );
 
     return (
         <div className="flex h-screen bg-gray-50">
-            {/* Backdrop for mobile */}
-            {isSidebarOpen && (
-                <div 
-                    className="fixed inset-0 bg-black bg-opacity-50 z-20 md:hidden"
-                    onClick={() => setIsSidebarOpen(false)}
-                ></div>
-            )}
-
-            {/* Sidebar */}
-            <aside className={`fixed inset-y-0 left-0 bg-white shadow-md p-4 flex flex-col transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative md:w-64 z-30 transition-transform duration-300 ease-in-out`}>
-                <div className="text-center py-4 border-b">
-                     <h1 className="text-xl font-bold text-gray-800">{pageTitle}</h1>
+            <aside className={`fixed inset-y-0 left-0 bg-white shadow-md p-4 flex flex-col transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative md:w-64 z-30 transition-transform duration-300`}>
+                <div className="py-4 border-b px-4 text-center">
+                    <img src={logo} alt="logo" className="h-12 w-auto mx-auto mb-2" />
+                    <div>
+                        <h1 className="text-lg font-bold text-gray-800 whitespace-pre-line">{titleInfo.main}</h1>
+                        {titleInfo.sub && <p className="text-xs text-gray-500">{titleInfo.sub}</p>}
+                    </div>
                 </div>
                 <nav className="mt-6 flex-1">
-                    <ul>
-                        {navItems[appType].map(item => {
-                            const pageId = pageIdMap[item];
-                            return (
-                                <li key={item} className="mb-2">
-                                    <a href="#" onClick={(e) => { e.preventDefault(); onNavClick(pageId); setIsSidebarOpen(false); }} className={`block py-2 px-4 rounded-lg transition ${currentPage === pageId ? 'bg-blue-500 text-white' : 'text-gray-600 hover:bg-gray-100'}`}>
-                                        {item}
-                                    </a>
-                                </li>
-                            );
-                        })}
-                    </ul>
+                    {renderNav(currentNavItems)}
                 </nav>
                  <div className="mt-auto">
-                    <button onClick={() => setAppMode(null)} className="w-full text-left py-2 px-4 rounded-lg text-gray-600 hover:bg-gray-100 transition"> 모드 선택으로 </button>
-                    <button onClick={onLogout} className="w-full text-left py-2 px-4 rounded-lg text-red-500 hover:bg-red-50 transition mt-2"> 로그아웃 </button>
+                    <button onClick={() => setAppMode(null)} className="w-full text-left py-2 px-4 rounded-lg text-gray-600 hover:bg-gray-100"> 모드 선택으로 </button>
+                    <button onClick={onLogout} className="w-full text-left py-2 px-4 rounded-lg text-red-500 hover:bg-red-50"> 로그아웃 </button>
                 </div>
             </aside>
 
-            {/* Main Content */}
-            <div className="flex-1 flex flex-col">
+            <main className="flex-1 flex flex-col">
                 <header className="md:hidden bg-white shadow-sm p-4 flex items-center">
                     <button onClick={() => setIsSidebarOpen(true)} className="text-gray-600">
-                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
+                        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 6h16M4 12h16m-7 6h7"></path></svg>
                     </button>
-                    <h2 className="text-lg font-bold ml-4">{pageTitle}</h2>
+                    <h2 className="text-lg font-bold ml-4 whitespace-pre-line">{titleInfo.main}</h2>
                 </header>
-                <main className="flex-1 p-4 sm:p-6 overflow-y-auto">
-                    {children}
-                </main>
-            </div>
+                <div className="flex-1 p-4 sm:p-6 overflow-y-auto">{children}</div>
+            </main>
         </div>
     );
 }
-
 
 function AnalysisSystemApp({ userData, setAppMode, onLogout }) {
     const [page, setPage] = useState('home');
     const [location, setLocation] = useState(null);
+    const [locationError, setLocationError] = useState('');
 
-    useEffect(() => {
+    const fetchLocation = () => {
+        setLocationError('');
+        setLocation(null);
         navigator.geolocation.getCurrentPosition(
-            (position) => {
-                setLocation({
-                    lat: position.coords.latitude,
-                    lng: position.coords.longitude,
-                });
-            },
+            (position) => setLocation({ lat: position.coords.latitude, lng: position.coords.longitude }),
             (error) => {
-                console.warn("GPS 조회 실패:", error.message);
-                setLocation(null);
+                let message = 'GPS 위치 정보를 가져올 수 없습니다.';
+                if (error.code === 1) message = 'GPS 권한이 거부되었습니다. 브라우저 설정을 확인해주세요.';
+                if (error.code === 2) message = '위치 정보를 확인할 수 없습니다. 네트워크를 확인하거나 다시 시도해주세요.';
+                if (error.code === 3) message = '위치 정보를 가져오는데 시간이 초과되었습니다.';
+                setLocationError(message);
             }
         );
-    }, []);
+    };
+
+    useEffect(fetchLocation, []);
 
     const renderPage = () => {
+        const props = { userData, location, locationError, onRetryGps: fetchLocation, setPage };
         switch (page) {
-            case 'home': return <AnalysisHome userData={userData} location={location} />;
-            case 'analysis': return <AnalysisManagement userData={userData} location={location} />;
-            default: return <AnalysisHome userData={userData} location={location} />;
+            case 'home': return <AnalysisHome {...props} />;
+
+            case 'receipt_status': return <div>접수현황 페이지는 현재 개발 중입니다.</div>;
+            case 'analysis': return <AnalysisManagement {...props} initialStep="analysis" />;
+            case 'receipt_status': return <div>접수현황 페이지는 현재 개발 중입니다.</div>;
+            default: return <AnalysisHome {...props} />;
         }
     };
     
-    return (
-        <AppShell 
-            pageTitle="RadAn-Flow"
-            userData={userData}
-            setAppMode={setAppMode}
-            onLogout={onLogout}
-            onNavClick={setPage}
-            currentPage={page}
-        >
-            {renderPage()}
-        </AppShell>
-    );
+    return <AppShell pageTitle="RadAn-Flow" userData={userData} setAppMode={setAppMode} onLogout={onLogout} onNavClick={setPage} currentPage={page}>{renderPage()}</AppShell>;
 }
 
 function ControlSystemApp({ userData, setAppMode, onLogout }) {
     const [page, setPage] = useState('dashboard');
-
     const renderPage = () => {
         switch(page) {
-            case 'dashboard': return <ControlDashboard />;
+            case 'dashboard': return <ControlDashboard userData={userData} />;
+            case 'progress': return <ProgressStatus />;
+            case 'analysis_results': return <AnalysisResults />;
+            case 'agency_info_page': return <AgencyInfo />;
+            case 'offices': return <InspectionOfficeManagement />;
+            case 'agencies': return <AnalysisAgencyManagement />;
+            case 'equipment': return <EquipmentManagement />;
             case 'settings': return <UserManagement />;
-            default: return <ControlDashboard />;
+            case 'notice_board': return <NoticeBoard userData={userData} />;
+            default: return <ControlDashboard userData={userData} />;
         }
     };
-    
-    return (
-        <AppShell
-            pageTitle="RadAn-Net"
-            userData={userData}
-            setAppMode={setAppMode}
-            onLogout={onLogout}
-            onNavClick={setPage}
-            currentPage={page}
-        >
-            {renderPage()}
-        </AppShell>
-    );
+    return <AppShell pageTitle="RadAn-Net" userData={userData} setAppMode={setAppMode} onLogout={onLogout} onNavClick={setPage} currentPage={page}>{renderPage()}</AppShell>;
 }
 
+function ProgressStatus() { return <div>진행현황 페이지는 현재 개발 중입니다.</div>; }
+function AnalysisResults() { return <div>분석결과 페이지는 현재 개발 중입니다.</div>; }
+function AgencyInfo() { return <div>기관정보 페이지는 현재 개발 중입니다.</div>;
+}
 
-function AnalysisHome({ userData, location }) {
+function AnalysisHome({ userData, location, locationError, onRetryGps }) {
     const [message, setMessage] = useState('');
-    
     const handleWork = async (type) => {
         setMessage('');
         try {
-            const workLogRef = collection(db, `/artifacts/${appId}/public/data/worklogs`);
-            await addDoc(workLogRef, {
-                userId: userData.uid,
-                userName: userData.name,
-                type: type, 
-                timestamp: Timestamp.now(),
-                location: location 
-            });
+            await addDoc(collection(db, `/artifacts/${appId}/public/data/worklogs`), { userId: userData.uid, userName: userData.name, type, timestamp: Timestamp.now(), location });
             setMessage(`${type} 기록이 완료되었습니다. ${!location ? '(위치 정보 없음)' : ''}`);
         } catch(error) {
             setMessage("근무기록 저장에 실패했습니다.");
@@ -443,35 +430,34 @@ function AnalysisHome({ userData, location }) {
             <div className="bg-white p-6 rounded-lg shadow-md mb-6">
                  <h2 className="text-2xl font-bold">{userData.name}님, 안녕하세요.</h2>
                  <p className="text-gray-600">{userData.organization} / {userData.position} / {userData.qualificationLevel}</p>
-                 <div className="mt-4 flex flex-col sm:flex-row gap-4">
+                 <div className="mt-4 flex gap-4">
                      <button onClick={() => handleWork('출근')} className="bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600">출근 기록</button>
                      <button onClick={() => handleWork('퇴근')} className="bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600">퇴근 기록</button>
                  </div>
-                 {location ? 
-                    <p className="text-sm text-gray-500 mt-2">현재 GPS: {location.lat.toFixed(4)}, {location.lng.toFixed(4)}</p> :
-                    <p className="text-sm text-yellow-600 mt-2">경고: GPS 위치 정보를 가져올 수 없습니다.</p>
-                }
+                 {location ? <p className="text-sm text-gray-500 mt-2">현재 GPS: {location.lat.toFixed(4)}, {location.lng.toFixed(4)}</p> :
+                    <div className="mt-2">
+                        <p className="text-sm text-yellow-600">{locationError || 'GPS 위치 정보를 가져오는 중...'}</p>
+                        {locationError && <button onClick={onRetryGps} className="text-sm text-blue-600 hover:underline mt-1">재시도</button>}
+                    </div>}
             </div>
-            
              <div className="grid md:grid-cols-2 gap-6">
                  <div className="bg-white p-6 rounded-lg shadow-md"><h3 className="text-lg font-semibold border-b pb-2 mb-4">협회 공지사항</h3><p>등록된 공지사항이 없습니다.</p></div>
                  <div className="bg-white p-6 rounded-lg shadow-md"><h3 className="text-lg font-semibold border-b pb-2 mb-4">나의 분석 이력</h3><p>진행한 분석 내역이 없습니다.</p></div>
-                 <div className="bg-white p-6 rounded-lg shadow-md"><h3 className="text-lg font-semibold border-b pb-2 mb-4">나의 출근 기록</h3><p>최근 출근 기록이 없습니다.</p></div>
              </div>
         </div>
     );
 }
 
-function AnalysisManagement({ userData, location }) {
+function AnalysisManagement({ userData, location, locationError, onRetryGps, setPage, initialStep }) {
     const [samplesByStatus, setSamplesByStatus] = useState({});
-    const [currentStep, setCurrentStep] = useState(null); 
+    const [currentStep, setCurrentStep] = useState(initialStep || null); 
     const [selectedSample, setSelectedSample] = useState(null);
     const [message, setMessage] = useState('');
 
     const processSteps = [
         { id: 'receipt', name: '시료접수', component: SampleRegistrationForm, roles: ['시료채취원', '관리자'] },
         { id: 'receive_wait', name: '시료수령 대기', component: SampleReceiveScreen, roles: ['분석원', '분석보조원', '관리자'] },
-        { id: 'prep_wait', name: '시료전처리 대기', component: null, roles: ['분석원', '분석보조원', '관리자'] },
+        { id: 'prep_wait', name: '시료전처리 대기', component: SamplePrepScreen, roles: ['분석원', '분석보조원', '관리자'] },
         { id: 'analysis_wait', name: '분석대기', component: null, roles: ['분석원', '관리자'] },
         { id: 'analyzing', name: '분석중', component: null, roles: ['분석원', '관리자'] },
         { id: 'analysis_done', name: '분석완료', component: null, roles: ['분석원', '관리자'] },
@@ -481,68 +467,96 @@ function AnalysisManagement({ userData, location }) {
     ];
 
     useEffect(() => {
-        const samplesRef = collection(db, `/artifacts/${appId}/public/data/samples`);
-        const q = userData.qualificationLevel === '관리자' 
-            ? samplesRef 
-            : query(samplesRef, where("lab", "==", userData.organization));
-        
+        if (!userData.inspectionOffice || userData.inspectionOffice.length === 0) {
+            setMessage("사용자에게 지정된 검사소가 없어 시료를 조회할 수 없습니다.");
+            setSamplesByStatus({}); // Clear existing data
+            return;
+        }
+        const q = query(collection(db, `/artifacts/${appId}/public/data/samples`), where("lab", "in", userData.inspectionOffice));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const statusCounts = processSteps.reduce((acc, step) => ({ ...acc, [step.id]: [] }), {});
+            console.log("AnalysisManagement - User Inspection Offices:", userData.inspectionOffice);
             querySnapshot.forEach((doc) => {
                 const sample = { id: doc.id, ...doc.data() };
-                if (statusCounts[sample.status]) {
-                    statusCounts[sample.status].push(sample);
-                }
+                console.log("AnalysisManagement - Sample Lab:", sample.lab, "Sample Code:", sample.sampleCode);
+                if (statusCounts[sample.status]) statusCounts[sample.status].push(sample);
             });
             setSamplesByStatus(statusCounts);
-        }, (error) => {
-            setMessage("샘플 데이터를 불러오는 데 실패했습니다. Firestore 규칙을 확인해주세요.");
-        });
-
-        return () => unsubscribe();
-    }, [userData.organization, userData.qualificationLevel]);
+            console.log("Samples by Status:", statusCounts);
+        }, (error) => setMessage("샘플 데이터를 불러오는 데 실패했습니다."));
+        return unsubscribe;
+    }, [userData.inspectionOffice]);
     
     const handleStepClick = (stepId) => {
         setMessage('');
         const stepInfo = processSteps.find(s => s.id === stepId);
         if (!stepInfo) return;
-
         const canAccess = stepInfo.roles.includes(userData.qualificationLevel) || stepInfo.roles.includes('all');
-
-        if(canAccess){
-            setCurrentStep(stepId);
-            setSelectedSample(null);
-        } else {
-             setMessage(`이 단계에 접근할 권한이 없습니다.`);
-        }
+        if(canAccess) { setCurrentStep(stepId); setSelectedSample(null); } 
+        else { setMessage(`이 단계에 접근할 권한이 없습니다.`); }
     };
     
     const renderStepContent = () => {
         if (!currentStep) return <p className="text-center text-gray-500 mt-10">상단 플로우에서 단계를 선택하여 작업을 시작하세요.</p>;
-        
         const stepInfo = processSteps.find(s => s.id === currentStep);
         if (!stepInfo) return null;
-        
         const samplesForStep = samplesByStatus[currentStep] || [];
+        const childProps = { userData, location, locationError, onRetryGps, showMessage: setMessage, setPage };
 
         if(selectedSample) {
             const DetailComponent = stepInfo.component;
-            return DetailComponent ? <DetailComponent sample={selectedSample} userData={userData} location={location} setSelectedSample={setSelectedSample} showMessage={setMessage} /> : <p className="text-center mt-10">{stepInfo.name} 상세 화면은 현재 개발 중입니다.</p>;
+            return DetailComponent ? <DetailComponent sample={selectedSample} {...childProps} setSelectedSample={setSelectedSample} /> : <p className="text-center mt-10">{stepInfo.name} 상세 화면은 현재 개발 중입니다.</p>;
         }
         
-        if (currentStep === 'receipt') {
-            return <SampleRegistrationForm userData={userData} location={location} setCurrentStep={setCurrentStep} showMessage={setMessage} />;
-        }
+        if (currentStep === 'receipt') return <SampleRegistrationForm {...childProps} setCurrentStep={setCurrentStep} setPage={setPage} />;
         
+        if (currentStep === 'prep_wait') {
+            return (
+                <div>
+                    <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
+                    <div className="bg-white rounded-lg shadow">
+                        <div className="grid grid-cols-4 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg">
+                            <div>시료ID</div>
+                            <div>품목명</div>
+                            <div>시료채취일시</div>
+                            <div>시료수령일시</div>
+                        </div>
+                        <ul className="divide-y divide-gray-200">
+                            {samplesForStep.length > 0 ? samplesForStep.map(sample => {
+                                const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+                                const receiveDate = receiveHistory ? receiveHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                                return (
+                                    <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className={`grid grid-cols-4 gap-4 p-4 text-sm ${stepInfo.component ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
+                                        <div className="font-medium text-gray-900">{sample.sampleCode}</div>
+                                        <div>{sample.itemName}</div>
+                                        <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
+                                        <div>{receiveDate}</div>
+                                    </li>
+                                );
+                            }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
+                        </ul>
+                    </div>
+                </div>
+            );
+        }
+
         return (
             <div>
                 <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
                 <div className="bg-white rounded-lg shadow">
+                    <div className="grid grid-cols-4 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg">
+                        <div>시료ID</div>
+                        <div>품목명</div>
+                        <div>시료채취일시</div>
+                        <div>접수일시</div>
+                    </div>
                     <ul className="divide-y divide-gray-200">
                         {samplesForStep.length > 0 ? samplesForStep.map(sample => (
-                             <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className={`p-4 ${stepInfo.component ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
-                                 <p className="font-semibold">{sample.sampleCode}</p>
-                                 <p className="text-sm text-gray-600">{sample.itemName} / {sample.location}</p>
+                             <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className={`grid grid-cols-4 gap-4 p-4 text-sm ${stepInfo.component ? 'hover:bg-gray-50 cursor-pointer' : ''}`}>
+                                 <div className="font-medium text-gray-900">{sample.sampleCode}</div>
+                                 <div>{sample.itemName}</div>
+                                 <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
+                                 <div>{sample.createdAt ? sample.createdAt.toDate().toLocaleString() : 'N/A'}</div>
                              </li>
                         )) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
                     </ul>
@@ -554,59 +568,191 @@ function AnalysisManagement({ userData, location }) {
     return (
         <div>
             <h2 className="text-2xl font-bold mb-6">분석 관리</h2>
-            {message && <p className="p-3 bg-red-100 text-red-800 rounded-lg mb-4">{message}</p>}
-            <div className="overflow-x-auto pb-4 mb-6">
-                <div className="flex items-center space-x-2 whitespace-nowrap p-2">
-                    {processSteps.map((step, index) => {
-                         const count = samplesByStatus[step.id] ? samplesByStatus[step.id].length : 0;
-                         const canAccess = step.roles.includes(userData.qualificationLevel) || step.roles.includes('all');
-                         return (
-                            <React.Fragment key={step.id}>
-                                <button
-                                    onClick={() => handleStepClick(step.id)}
-                                    className={`flex flex-col items-center justify-center p-3 rounded-lg w-32 h-24 text-center transition ${ currentStep === step.id ? 'bg-blue-600 text-white shadow-lg' : 'bg-white shadow' } ${canAccess ? 'cursor-pointer hover:bg-blue-50' : 'cursor-not-allowed bg-gray-200 text-gray-500'}`}
-                                    disabled={!canAccess}
-                                >
-                                    <span className="font-semibold text-sm">{step.name}</span>
-                                    <span className="text-2xl font-bold">{count}</span>
-                                </button>
-                                {index < processSteps.length - 1 && <div className="text-gray-300 text-2xl font-light mx-1">→</div>}
-                             </React.Fragment>
-                         );
-                    })}
-                </div>
-            </div>
-            
-            <div className="mt-6">
-                {renderStepContent()}
-            </div>
+            {message && <p className={`p-3 bg-red-100 text-red-800 rounded-lg mb-4`}>{message}</p>}
+            <div className="pb-4 mb-6"><div className="grid grid-cols-[repeat(auto-fit,minmax(8rem,1fr))] gap-4">
+                {processSteps.map((step) => {
+                     const count = samplesByStatus[step.id]?.length || 0;
+                     const canAccess = step.roles.includes(userData.qualificationLevel) || step.roles.includes('all');
+                     if (step.id === 'receipt') {
+                        return (
+                           <button key={step.id} onClick={() => handleStepClick(step.id)} disabled={!canAccess}
+                               className={`flex flex-col items-center justify-center p-3 rounded-lg h-28 text-center transition border-2 ${currentStep === step.id ? 'bg-blue-50 border-blue-500 shadow-md' : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50'} ${canAccess ? 'cursor-pointer' : 'cursor-not-allowed bg-gray-100 text-gray-400'}`}>
+                               <span className="font-semibold text-lg text-gray-700">접수하기</span>
+                           </button>
+                        );
+                    }
+                     return (
+                        <button key={step.id} onClick={() => handleStepClick(step.id)} disabled={!canAccess}
+                            className={`flex flex-col items-center justify-between p-3 rounded-lg h-28 text-center transition border-2 ${currentStep === step.id ? 'bg-blue-50 border-blue-500 shadow-md' : 'bg-white border-gray-200 hover:border-blue-400 hover:bg-blue-50'} ${canAccess ? 'cursor-pointer' : 'cursor-not-allowed bg-gray-100 text-gray-400'}`}>
+                            <span className="font-semibold text-sm text-gray-700">{step.name}</span>
+                            <span className={`flex items-center justify-center w-10 h-10 rounded-full text-lg font-bold ${currentStep === step.id ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800'}`}>{count}</span>
+                        </button>
+                     );
+                })}
+            </div></div>
+            <div className="mt-6">{renderStepContent()}</div>
         </div>
     );
 }
 
-function SampleRegistrationForm({ userData, location, setCurrentStep, showMessage }) {
-    const [formData, setFormData] = useState({ type: '위판장', location: '', datetime: '', itemName: '', weight: '', etc: '', collectorName: userData.name, collectorContact: '', receivingLab: '수품원 인천지원', });
-    const [photos, setPhotos] = useState([]);
+function SampleRegistrationForm({ userData, location, locationError, onRetryGps, setCurrentStep, showMessage, setPage }) {
+    const [formData, setFormData] = useState({
+        type: '위판장',
+        location: '',
+        datetime: '',
+        itemName: '',
+        sampleAmount: '',
+        etc: '',
+        collectorName: userData.name,
+        collectorContact: userData.contact || '',
+        receivingLab: '',
+        sampleCode: '',
+    });
+    const [autoGenerateSampleCode, setAutoGenerateSampleCode] = useState(true);
+    const [photos, setPhotos] = useState({ photo1: null, photo2: null });
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [inspectionOffices, setInspectionOffices] = useState([]);
+    const [error, setError] = useState('');
+    const [signature, setSignature] = useState(null);
 
-    const handleInputChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); };
-    const handleFileChange = (e) => { if (e.target.files.length > 2) { showMessage("사진은 최대 2장까지 업로드 가능합니다."); return; } setPhotos(Array.from(e.target.files)); };
-    
+    useEffect(() => {
+        const isDemoUser = userData.uid.startsWith('demo-');
+        const fetchInspectionOffices = async () => {
+            try {
+                const officesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`));
+                let offices = officesSnapshot.docs.map(doc => doc.data().name);
+
+                if (userData.organization && !offices.includes(userData.organization)) {
+                    offices.unshift(userData.organization);
+                }
+
+                if (isDemoUser) {
+                    const demoOffice = '데모검사소';
+                    if (!offices.includes(demoOffice)) {
+                        offices.unshift(demoOffice);
+                    }
+                }
+                
+                setInspectionOffices(offices);
+
+                if (offices.length > 0) {
+                    const defaultLab = userData.organization && offices.includes(userData.organization)
+                        ? userData.organization
+                        : offices[0];
+                    setFormData(prev => ({ ...prev, receivingLab: defaultLab }));
+                }
+            } catch (err) {
+                setError("검사소 목록을 불러오는 데 실패했습니다.");
+            }
+        };
+        fetchInspectionOffices();
+    }, [userData.uid, userData.organization]);
+
+    const handleInputChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleFileChange = (e) => {
+        const { name, files } = e.target;
+        if (files[0]) {
+            setPhotos(prev => ({ ...prev, [name]: files[0] }));
+        }
+    };
+
+    const handleSign = () => {
+        setSignature({
+            user: userData.name,
+            datetime: new Date(),
+            gps: location ? { lat: location.lat, lng: location.lng } : null
+        });
+    };
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setIsSubmitting(true);
+        setError('');
         try {
-            const now = new Date();
-            const sampleCode = `${now.getFullYear()}${(now.getMonth()+1).toString().padStart(2, '0')}${now.getDate().toString().padStart(2, '0')}-${now.getHours().toString().padStart(2, '0')}${now.getMinutes().toString().padStart(2, '0')}${now.getSeconds().toString().padStart(2, '0')}-${Math.floor(100 + Math.random() * 900)}`;
+            let sampleCode = formData.sampleCode;
+            if (autoGenerateSampleCode) {
+                const typePrefix = {
+                    '위판장': 'AP',
+                    '양식장': 'AC',
+                    '천일염': 'SS',
+                    '기타': 'MP'
+                }[formData.type];
 
-            const photoURLs = await Promise.all( photos.map(async (photo) => { const storageRef = ref(storage, `samples/${sampleCode}/${photo.name}`); await uploadBytes(storageRef, photo); return await getDownloadURL(storageRef); }) );
+                const today = new Date();
+                const dateStr = today.getFullYear().toString().slice(-2) + (today.getMonth() + 1).toString().padStart(2, '0') + today.getDate().toString().padStart(2, '0');
+                
+                const startOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 0, 0, 0, 0);
+                const endOfDay = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
 
-            const sampleDoc = { ...formData, sampleCode, status: 'receive_wait', lab: formData.receivingLab, photos: photoURLs, history: [{ action: '시료접수', user: userData.name, userId: userData.uid, timestamp: Timestamp.now(), location: location }] };
+                const q = query(
+                    collection(db, `/artifacts/${appId}/public/data/samples`),
+                    where("createdAt", ">=", Timestamp.fromDate(startOfDay)),
+                    where("createdAt", "<=", Timestamp.fromDate(endOfDay)),
+                    where("sampleCode", ">=", `${typePrefix}-${dateStr}-000`),
+                    where("sampleCode", "<=", `${typePrefix}-${dateStr}-999`)
+                );
 
+                const querySnapshot = await getDocs(q);
+                const newSequence = (querySnapshot.size + 1).toString().padStart(3, '0');
+                sampleCode = `${typePrefix}-${dateStr}-${newSequence}`;
+            } else {
+                if (!sampleCode) {
+                    setError('시료 ID를 수동으로 입력해주세요.');
+                    setIsSubmitting(false);
+                    return;
+                }
+                const q = query(collection(db, `/artifacts/${appId}/public/data/samples`), where("sampleCode", "==", sampleCode));
+                const querySnapshot = await getDocs(q);
+                if (!querySnapshot.empty) {
+                    setError('이미 존재하는 시료 ID입니다.');
+                    setIsSubmitting(false);
+                    return;
+                }
+            }
+
+            const photoURLs = {};
+            if (photos.photo1) {
+                const storageRef1 = ref(storage, `samples/${sampleCode}/photo1_${photos.photo1.name}`);
+                await uploadBytes(storageRef1, photos.photo1);
+                photoURLs.photo1 = await getDownloadURL(storageRef1);
+            }
+            if (photos.photo2) {
+                const storageRef2 = ref(storage, `samples/${sampleCode}/photo2_${photos.photo2.name}`);
+                await uploadBytes(storageRef2, photos.photo2);
+                photoURLs.photo2 = await getDownloadURL(storageRef2);
+            }
+
+            console.log("SampleRegistrationForm - User Organization:", userData.organization);
+            console.log("SampleRegistrationForm - Receiving Lab:", formData.receivingLab);
+
+            const sampleDoc = {
+                ...formData,
+                sampleCode,
+                status: 'receive_wait',
+                lab: formData.receivingLab,
+                photos: photoURLs,
+                createdAt: Timestamp.now(),
+                history: [{
+                    action: '시료접수',
+                    user: userData.name,
+                    userId: userData.uid,
+                    timestamp: Timestamp.now(),
+                    signature: {
+                        user: signature.user,
+                        datetime: signature.datetime.toISOString(),
+                        gps: signature.gps ? `${signature.gps.lat}, ${signature.gps.lng}` : 'N/A'
+                    }
+                }]
+            };
             await addDoc(collection(db, `/artifacts/${appId}/public/data/samples`), sampleDoc);
             showMessage("시료 접수가 완료되었습니다.");
             setCurrentStep('receive_wait');
         } catch (error) {
+            setError(`시료 접수에 실패했습니다: ${error.message}`);
             showMessage("시료 접수에 실패했습니다.");
         } finally {
             setIsSubmitting(false);
@@ -616,24 +762,126 @@ function SampleRegistrationForm({ userData, location, setCurrentStep, showMessag
     return (
         <div className="bg-white p-6 rounded-lg shadow-md">
             <h3 className="text-xl font-bold mb-4">시료 접수</h3>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid sm:grid-cols-2 gap-4">
-                     <div><label className="block text-sm font-medium text-gray-700">시료구분</label><select name="type" value={formData.type} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"><option>위판장</option> <option>양식장</option> <option>천일염</option> <option>기타</option></select></div>
-                     <div><label className="block text-sm font-medium text-gray-700">인수예정기관</label><select name="receivingLab" value={formData.receivingLab} onChange={handleInputChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2"><option>수품원 인천지원</option> <option>알엠택</option></select></div>
-                     <input type="text" name="location" placeholder="채취장소" onChange={handleInputChange} required className="p-2 border rounded-md" />
-                     <input type="datetime-local" name="datetime" onChange={handleInputChange} required className="p-2 border rounded-md" />
-                     <input type="text" name="itemName" placeholder="품목명" onChange={handleInputChange} required className="p-2 border rounded-md" />
-                     <input type="number" name="weight" placeholder="중량(kg)" onChange={handleInputChange} required className="p-2 border rounded-md" />
+            {error && <p className="text-red-500 bg-red-100 p-3 rounded-lg mb-4">{error}</p>}
+            <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="grid sm:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700 mb-2">시료분류</label>
+                        <div className="flex items-center space-x-4">
+                            {['위판장', '양식장', '천일염', '기타'].map(type => (
+                                <label key={type} className="flex items-center">
+                                    <input
+                                        type="radio"
+                                        name="type"
+                                        value={type}
+                                        checked={formData.type === type}
+                                        onChange={handleInputChange}
+                                        className="h-4 w-4 text-blue-600 border-gray-300 focus:ring-blue-500"
+                                    />
+                                    <span className="ml-2 text-sm text-gray-700">{type}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <div>
+                        <label htmlFor="sampleCode" className="block text-sm font-medium text-gray-700">시료 ID</label>
+                        <div className="mt-1 flex items-center">
+                            <input
+                                type="text"
+                                id="sampleCode"
+                                name="sampleCode"
+                                value={formData.sampleCode}
+                                onChange={handleInputChange}
+                                disabled={autoGenerateSampleCode}
+                                required={!autoGenerateSampleCode}
+                                className="block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 disabled:bg-gray-100"
+                            />
+                            <label className="ml-4 flex items-center flex-shrink-0">
+                                <input
+                                    type="checkbox"
+                                    checked={autoGenerateSampleCode}
+                                    onChange={(e) => {
+                                        setAutoGenerateSampleCode(e.target.checked);
+                                        if (e.target.checked) {
+                                            setFormData(prev => ({ ...prev, sampleCode: '' }));
+                                        }
+                                    }}
+                                    className="h-4 w-4 text-blue-600 border-gray-300 rounded focus:ring-blue-500"
+                                />
+                                <span className="ml-2 text-sm text-gray-700">자동생성</span>
+                            </label>
+                        </div>
+                    </div>
+                    <div>
+                        <label htmlFor="itemName" className="block text-sm font-medium text-gray-700">품목명</label>
+                        <input type="text" id="itemName" name="itemName" value={formData.itemName} placeholder="품목명" onChange={handleInputChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                    </div>
                 </div>
-                 <div><label className="block text-sm font-medium text-gray-700">시료 사진 (최대 2장)</label><input type="file" multiple accept="image/*" onChange={handleFileChange} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" /></div>
-                
-                {location ?
-                    <p className="text-sm text-gray-500">현재 GPS: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}</p> :
-                    <p className="text-sm text-yellow-600">경고: GPS 위치를 기록할 수 없습니다. (진행 가능)</p>
-                }
-                <button type="submit" disabled={isSubmitting} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:bg-gray-400">
-                    {isSubmitting ? '접수 중...' : '접수 완료'}
-                </button>
+
+                <div className="grid sm:grid-cols-2 gap-6">
+                    <div>
+                        <label htmlFor="collectorName" className="block text-sm font-medium text-gray-700">시료접수자</label>
+                        <input type="text" id="collectorName" name="collectorName" value={formData.collectorName} disabled className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm bg-gray-100" />
+                    </div>
+                    <div>
+                        <label htmlFor="collectorContact" className="block text-sm font-medium text-gray-700">연락처</label>
+                        <input type="text" id="collectorContact" name="collectorContact" value={formData.collectorContact} onChange={handleInputChange} placeholder="연락처" required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                    </div>
+                    <div>
+                        <label htmlFor="receivingLab" className="block text-sm font-medium text-gray-700">접수검사소명</label>
+                        <select id="receivingLab" name="receivingLab" value={formData.receivingLab} onChange={handleInputChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500">
+                            {inspectionOffices.map(office => <option key={office} value={office}>{office}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label htmlFor="datetime" className="block text-sm font-medium text-gray-700">시료채취일</label>
+                        <input type="datetime-local" id="datetime" name="datetime" value={formData.datetime} onChange={handleInputChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                    </div>
+                    <div>
+                        <label htmlFor="location" className="block text-sm font-medium text-gray-700">채취장소</label>
+                        <input type="text" id="location" name="location" value={formData.location} placeholder="채취장소" onChange={handleInputChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                    </div>
+                    <div>
+                        <label htmlFor="sampleAmount" className="block text-sm font-medium text-gray-700">시료량</label>
+                        <div className="mt-1 flex rounded-md shadow-sm">
+                            <input type="number" id="sampleAmount" name="sampleAmount" value={formData.sampleAmount} placeholder="시료량" onChange={handleInputChange} required className="flex-1 block w-full p-2 border border-gray-300 rounded-none rounded-l-md focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                            <span className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">kg</span>
+                        </div>
+                    </div>
+                     <div>
+                        <label htmlFor="etc" className="block text-sm font-medium text-gray-700">추가정보 (필요시)</label>
+                        <textarea id="etc" name="etc" value={formData.etc} onChange={handleInputChange} rows="3" className="mt-1 block w-full p-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"></textarea>
+                    </div>
+                </div>
+
+                <div className="grid sm:grid-cols-2 gap-6">
+                    <div>
+                        <label htmlFor="photo1" className="block text-sm font-medium text-gray-700">시료사진1</label>
+                        <input type="file" id="photo1" name="photo1" accept="image/*" onChange={handleFileChange} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                    </div>
+                    <div>
+                        <label htmlFor="photo2" className="block text-sm font-medium text-gray-700">시료사진2</label>
+                        <input type="file" id="photo2" name="photo2" accept="image/*" onChange={handleFileChange} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                    </div>
+                </div>
+
+                <div className="p-4 border rounded-lg">
+                    <h4 className="font-semibold">전자결재</h4>
+                    {signature ? (
+                        <div className="mt-2 text-sm">
+                            <p><strong>서명자:</strong> {signature.user}</p>
+                            <p><strong>서명일시:</strong> {signature.datetime.toLocaleString()}</p>
+                            <p><strong>위치기록:</strong> {signature.gps ? `${signature.gps.lat.toFixed(5)}, ${signature.gps.lng.toFixed(5)}` : 'N/A'}</p>
+                        </div>
+                    ) : (
+                        <div className="mt-2">
+                            <button type="button" onClick={handleSign} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">서명하기</button>
+                            {locationError && <p className="text-sm text-yellow-600 mt-1">{locationError}</p>}
+                        </div>
+                    )}
+                </div>
+
+                <button type="submit" disabled={!signature || isSubmitting} className="w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">{isSubmitting ? '접수 중...' : '접수 완료'}</button>
             </form>
         </div>
     );
@@ -642,49 +890,534 @@ function SampleRegistrationForm({ userData, location, setCurrentStep, showMessag
 function SampleReceiveScreen({ sample, userData, location, setSelectedSample, showMessage }) {
     const [photos, setPhotos] = useState([]);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [signature, setSignature] = useState(null);
 
-    const handleFileChange = (e) => { if (e.target.files.length > 2) { showMessage("사진은 최대 2장까지 업로드 가능합니다."); return; } setPhotos(Array.from(e.target.files)); };
+    const handleFileChange = (e) => {
+        if (e.target.files.length > 2) {
+            showMessage("사진은 최대 2장까지 업로드 가능합니다.");
+            e.target.value = null;
+            return;
+        }
+        setPhotos(Array.from(e.target.files));
+    };
+
+    const handleSign = () => {
+        setSignature({
+            user: userData.name,
+            datetime: new Date(),
+            gps: location ? { lat: location.lat, lng: location.lng } : null
+        });
+    };
 
     const handleReceive = async () => {
-         if (photos.length === 0) { showMessage("시료 수령 사진을 업로드해주세요."); return; }
+        if (photos.length === 0) { showMessage("시료 수령 사진을 1장 이상 업로드해주세요."); return; }
+        if (!signature) { showMessage("전자결재 서명을 진행해주세요."); return; }
+
         setIsSubmitting(true);
         try {
-            const photoURLs = await Promise.all( photos.map(async (photo) => { const storageRef = ref(storage, `samples/${sample.sampleCode}/receive_${photo.name}`); await uploadBytes(storageRef, photo); return await getDownloadURL(storageRef); }) );
+            const photoURLs = await Promise.all(
+                photos.map(async (photo) => {
+                    const storageRef = ref(storage, `samples/${sample.sampleCode}/receive_${photo.name}`);
+                    await uploadBytes(storageRef, photo);
+                    return await getDownloadURL(storageRef);
+                })
+            );
+
             const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
-            const newHistoryEntry = { action: '시료수령', user: userData.name, userId: userData.uid, timestamp: Timestamp.now(), location: location, photos: photoURLs };
-            await updateDoc(sampleRef, { status: 'prep_wait', history: [...sample.history, newHistoryEntry] });
+            const newHistoryEntry = {
+                action: '시료수령',
+                user: userData.name,
+                userId: userData.uid,
+                timestamp: Timestamp.now(),
+                photos: photoURLs,
+                signature: {
+                    user: signature.user,
+                    datetime: signature.datetime.toISOString(),
+                    gps: signature.gps ? `${signature.gps.lat}, ${signature.gps.lng}` : 'N/A'
+                }
+            };
+
+            await updateDoc(sampleRef, {
+                status: 'prep_wait',
+                history: [...sample.history, newHistoryEntry]
+            });
+
             showMessage('시료 수령이 완료되었습니다.');
             setSelectedSample(null);
         } catch (error) {
-            showMessage("시료 수령 처리에 실패했습니다.");
+            showMessage(`시료 수령 처리에 실패했습니다: ${error.message}`);
         } finally {
             setIsSubmitting(false);
         }
     };
 
+    const registrationHistory = sample.history?.find(h => h.action === '시료접수');
+
     return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-            <button onClick={() => setSelectedSample(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로</button>
-            <h3 className="text-xl font-bold mb-4">시료 수령: {sample.sampleCode}</h3>
-            <div className="space-y-2 mb-4 text-sm text-gray-700">
-                <p><strong>품목명:</strong> {sample.itemName}</p>
-                <p><strong>채취장소:</strong> {sample.location}</p>
-                <p><strong>채취자:</strong> {sample.collectorName}</p>
+        <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
+            <div>
+                <button onClick={() => setSelectedSample(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로</button>
+                <h3 className="text-2xl font-bold">시료 수령: {sample.sampleCode}</h3>
             </div>
-            <div><label className="block text-sm font-medium text-gray-700">시료 수령 사진 (최대 2장)</label><input type="file" multiple accept="image/*" onChange={handleFileChange} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100" /></div>
-            
-            {location ?
-                <p className="text-sm text-gray-500 mt-2">현재 GPS: {location.lat.toFixed(5)}, {location.lng.toFixed(5)}</p> :
-                <p className="text-sm text-yellow-600 mt-2">경고: GPS 위치를 기록할 수 없습니다. (진행 가능)</p>
-            }
-            <button onClick={handleReceive} disabled={isSubmitting} className="mt-6 w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 transition disabled:bg-gray-400">
+
+            <div className="border-t pt-4">
+                <h4 className="text-lg font-semibold mb-2">시료 정보</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                    <p><strong>시료 ID:</strong> {sample.sampleCode}</p>
+                    <p><strong>시료분류:</strong> {sample.type}</p>
+                    <p><strong>품목명:</strong> {sample.itemName}</p>
+                    <p><strong>시료접수자:</strong> {sample.collectorName}</p>
+                    <p><strong>연락처:</strong> {sample.collectorContact}</p>
+                    <p><strong>접수검사소명:</strong> {sample.lab}</p>
+                    <p><strong>시료채취일:</strong> {sample.datetime}</p>
+                    <p><strong>채취장소:</strong> {sample.location}</p>
+                    <p><strong>시료량:</strong> {sample.sampleAmount} kg</p>
+                    <p className="col-span-full"><strong>추가정보:</strong> {sample.etc || 'N/A'}</p>
+                    <div className="col-span-full">
+                        <strong>접수사진:</strong>
+                        <div className="flex gap-4 mt-1">
+                            {sample.photos?.photo1 && <a href={sample.photos.photo1} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">사진 1 보기</a>}
+                            {sample.photos?.photo2 && <a href={sample.photos.photo2} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">사진 2 보기</a>}
+                            {!sample.photos?.photo1 && !sample.photos?.photo2 && <span>N/A</span>}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="border-t pt-4">
+                <h4 className="text-lg font-semibold mb-2">시료인수사진 (최대 2건)</h4>
+                <input type="file" multiple accept="image/*" onChange={handleFileChange} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+            </div>
+
+            <div className="border-t pt-4">
+                <h4 className="text-lg font-semibold mb-2">전자결재</h4>
+                <div className="border rounded-lg p-4 grid grid-cols-1 md:grid-cols-2 gap-4 divide-x divide-gray-200">
+                    <div className="px-4">
+                        <h5 className="font-semibold text-center mb-2">시료접수자</h5>
+                        {registrationHistory?.signature ? (
+                            <div className="mt-2 text-sm text-gray-600 space-y-1">
+                                <p><strong>서명자:</strong> {registrationHistory.signature.user}</p>
+                                <p><strong>서명일시:</strong> {new Date(registrationHistory.signature.datetime).toLocaleString()}</p>
+                                <p><strong>위치기록:</strong> {registrationHistory.signature.gps}</p>
+                            </div>
+                        ) : <p className="text-sm text-gray-500 mt-2 text-center">접수 서명 정보가 없습니다.</p>}
+                    </div>
+
+                    <div className="px-4">
+                        <h5 className="font-semibold text-center mb-2">시료수령자</h5>
+                        {signature ? (
+                            <div className="mt-2 text-sm space-y-1">
+                                <p><strong>서명자:</strong> {signature.user}</p>
+                                <p><strong>서명일시:</strong> {signature.datetime.toLocaleString()}</p>
+                                <p><strong>위치기록:</strong> {signature.gps ? `${signature.gps.lat.toFixed(5)}, ${signature.gps.lng.toFixed(5)}` : 'N/A'}</p>
+                            </div>
+                        ) : (
+                            <div className="mt-2 text-center">
+                                <button type="button" onClick={handleSign} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">서명하기</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <button onClick={handleReceive} disabled={isSubmitting || !signature || photos.length === 0} className="mt-6 w-full bg-green-600 text-white font-bold py-3 rounded-lg hover:bg-green-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
                 {isSubmitting ? '처리 중...' : '시료 인수 완료'}
             </button>
         </div>
     );
 }
 
-function ControlDashboard() { return ( <div> <h2 className="text-2xl font-bold">진행 현황 대시보드</h2> <p className="mt-4">대시보드 기능은 현재 개발 중입니다.</p> </div> ); }
+function SamplePrepScreen({ sample, userData, location, setSelectedSample, showMessage }) {
+    const [prepWeight, setPrepWeight] = useState('');
+    const [photos, setPhotos] = useState([]);
+    const [signature, setSignature] = useState(null);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleFileChange = (e) => {
+        if (e.target.files.length > 2) {
+            showMessage("사진은 최대 2장까지 업로드 가능합니다.");
+            e.target.value = null;
+            return;
+        }
+        setPhotos(Array.from(e.target.files));
+    };
+
+    const handleSign = () => {
+        setSignature({
+            user: userData.name,
+            datetime: new Date(),
+            gps: location ? { lat: location.lat, lng: location.lng } : null
+        });
+    };
+
+    const handleComplete = async () => {
+        if (photos.length === 0 || !prepWeight) {
+            showMessage("시료 조제 무게와 사진을 모두 입력해주세요.");
+            return;
+        }
+        if (!signature) {
+            showMessage("전자결재 서명을 진행해주세요.");
+            return;
+        }
+
+        setIsSubmitting(true);
+        try {
+            const photoURLs = await Promise.all(
+                photos.map(async (photo) => {
+                    const storageRef = ref(storage, `samples/${sample.sampleCode}/prep_${photo.name}`);
+                    await uploadBytes(storageRef, photo);
+                    return await getDownloadURL(storageRef);
+                })
+            );
+
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            const newHistoryEntry = {
+                action: '시료전처리',
+                user: userData.name,
+                userId: userData.uid,
+                timestamp: Timestamp.now(),
+                prepWeight: `${prepWeight} kg`,
+                photos: photoURLs,
+                signature: {
+                    user: signature.user,
+                    datetime: signature.datetime.toISOString(),
+                    gps: signature.gps ? `${signature.gps.lat}, ${signature.gps.lng}` : 'N/A'
+                }
+            };
+
+            await updateDoc(sampleRef, {
+                status: 'analysis_wait',
+                history: [...sample.history, newHistoryEntry]
+            });
+
+            showMessage('시료 전처리가 완료되었습니다.');
+            setSelectedSample(null);
+        } catch (error) {
+            showMessage(`시료 전처리 처리에 실패했습니다: ${error.message}`);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const registrationHistory = sample.history?.find(h => h.action === '시료접수');
+    const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
+            <div>
+                <button onClick={() => setSelectedSample(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로</button>
+                <h3 className="text-2xl font-bold">시료 전처리: {sample.sampleCode}</h3>
+            </div>
+
+            <div className="border-t pt-4">
+                <h4 className="text-lg font-semibold mb-2">시료 정보</h4>
+                <div className="grid grid-cols-2 md:grid-cols-3 gap-4 text-sm">
+                    <p><strong>시료 ID:</strong> {sample.sampleCode}</p>
+                    <p><strong>시료분류:</strong> {sample.type}</p>
+                    <p><strong>시료접수자:</strong> {sample.collectorName}</p>
+                    <p><strong>연락처:</strong> {sample.collectorContact}</p>
+                    <p><strong>시료채취일:</strong> {sample.datetime}</p>
+                    <p><strong>채취장소:</strong> {sample.location}</p>
+                    <p className="col-span-full"><strong>추가정보:</strong> {sample.etc || 'N/A'}</p>
+                </div>
+                <div className="mt-4 space-y-2">
+                    <div>
+                        <strong>시료접수사진:</strong>
+                        <div className="flex gap-4 mt-1">
+                            {sample.photos?.photo1 && <a href={sample.photos.photo1} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">사진 1 보기</a>}
+                            {sample.photos?.photo2 && <a href={sample.photos.photo2} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">사진 2 보기</a>}
+                            {!sample.photos?.photo1 && !sample.photos?.photo2 && <span>N/A</span>}
+                        </div>
+                    </div>
+                    <div>
+                        <strong>시료인수사진:</strong>
+                        <div className="flex gap-4 mt-1">
+                            {receiveHistory?.photos?.map((photo, index) => (
+                                <a key={index} href={photo} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline">사진 {index + 1} 보기</a>
+                            ))}
+                            {!receiveHistory?.photos && <span>N/A</span>}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="border-t pt-4 grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                    <label htmlFor="prepWeight" className="block text-lg font-semibold mb-2">시료조제무게</label>
+                    <div className="mt-1 flex rounded-md shadow-sm">
+                        <input type="number" id="prepWeight" value={prepWeight} onChange={(e) => setPrepWeight(e.target.value)} placeholder="시료량" required className="flex-1 block w-full p-2 border border-gray-300 rounded-none rounded-l-md focus:outline-none focus:ring-blue-500 focus:border-blue-500" />
+                        <span className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">kg</span>
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-lg font-semibold mb-2">시료조제사진 (최대 2건)</label>
+                    <input type="file" multiple accept="image/*" onChange={handleFileChange} className="mt-1 block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"/>
+                </div>
+            </div>
+
+            <div className="border-t pt-4">
+                <h4 className="text-lg font-semibold mb-2">전자결재</h4>
+                <div className="border rounded-lg p-4 grid grid-cols-1 md:grid-cols-3 gap-4 divide-x divide-gray-200">
+                    <div className="px-2">
+                        <h5 className="font-semibold text-center mb-2">시료접수자</h5>
+                        {registrationHistory?.signature ? (
+                            <div className="mt-2 text-sm text-gray-600 space-y-1">
+                                <p><strong>서명자:</strong> {registrationHistory.signature.user}</p>
+                                <p><strong>서명일시:</strong> {new Date(registrationHistory.signature.datetime).toLocaleString()}</p>
+                                <p><strong>위치기록:</strong> {registrationHistory.signature.gps}</p>
+                            </div>
+                        ) : <p className="text-sm text-gray-500 mt-2 text-center">정보 없음</p>}
+                    </div>
+                    <div className="px-2">
+                        <h5 className="font-semibold text-center mb-2">시료수령자</h5>
+                        {receiveHistory?.signature ? (
+                            <div className="mt-2 text-sm text-gray-600 space-y-1">
+                                <p><strong>서명자:</strong> {receiveHistory.signature.user}</p>
+                                <p><strong>서명일시:</strong> {new Date(receiveHistory.signature.datetime).toLocaleString()}</p>
+                                <p><strong>위치기록:</strong> {receiveHistory.signature.gps}</p>
+                            </div>
+                        ) : <p className="text-sm text-gray-500 mt-2 text-center">정보 없음</p>}
+                    </div>
+                    <div className="px-2">
+                        <h5 className="font-semibold text-center mb-2">전처리수행자</h5>
+                        {signature ? (
+                            <div className="mt-2 text-sm space-y-1">
+                                <p><strong>서명자:</strong> {signature.user}</p>
+                                <p><strong>서명일시:</strong> {signature.datetime.toLocaleString()}</p>
+                                <p><strong>위치기록:</strong> {signature.gps ? `${signature.gps.lat.toFixed(5)}, ${signature.gps.lng.toFixed(5)}` : 'N/A'}</p>
+                            </div>
+                        ) : (
+                            <div className="mt-2 text-center">
+                                <button type="button" onClick={handleSign} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">서명하기</button>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            <button onClick={handleComplete} disabled={isSubmitting || !signature || photos.length === 0 || !prepWeight} className="mt-6 w-full bg-blue-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed">
+                {isSubmitting ? '처리 중...' : '시료 전처리 완료'}
+            </button>
+        </div>
+    );
+}
+
+function ControlDashboard({ userData }) {
+    const [notices, setNotices] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [selectedNotice, setSelectedNotice] = useState(null);
+    const [message, setMessage] = useState('');
+
+    useEffect(() => {
+        const noticesRef = collection(db, `/artifacts/${appId}/public/data/notices`);
+        const q = query(noticesRef, orderBy("createdAt", "desc"));
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            setNotices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setIsLoading(false);
+        }, (error) => {
+            setMessage("공지사항을 불러오는 데 실패했습니다.");
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    if (isLoading) return <div>공지사항을 불러오는 중...</div>;
+
+    if (selectedNotice) {
+        return (
+            <div>
+                <button onClick={() => setSelectedNotice(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로</button>
+                <div className="bg-white p-6 rounded-lg shadow-md">
+                    <h2 className="text-2xl font-bold">{selectedNotice.title}</h2>
+                    <p className="text-sm text-gray-500 my-2">작성자: {selectedNotice.authorName} | 작성일: {selectedNotice.createdAt.toDate().toLocaleDateString()}</p>
+                    <hr className="my-4"/>
+                    <p className="whitespace-pre-wrap">{selectedNotice.content}</p>
+                    {selectedNotice.attachments && selectedNotice.attachments.map((att, index) => (
+                        <a key={index} href={att.url} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline mt-6 block">첨부파일 {index + 1}: {att.name}</a>
+                    ))}
+                </div>
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">공지사항</h2>
+            </div>
+            {message && <p className="p-3 rounded-lg mb-4 bg-blue-100 text-blue-800">{message}</p>}
+            <div className="bg-white shadow-md rounded-lg"><ul className="divide-y divide-gray-200">
+                {notices.map(notice => (
+                    <li key={notice.id} onClick={() => setSelectedNotice(notice)} className="p-4 hover:bg-gray-50 cursor-pointer">
+                        <p className="font-semibold">{notice.title}</p>
+                        <p className="text-sm text-gray-600">{notice.authorName} - {notice.createdAt.toDate().toLocaleDateString()}</p>
+                    </li>
+                ))}
+            </ul></div>
+        </div>
+    );
+}
+
+function AnalysisExperienceDetails({ analysisExperience }) {
+    if (!analysisExperience || analysisExperience.length === 0) {
+        return <p>N/A</p>;
+    }
+
+    return (
+        <div className="space-y-2">
+            {analysisExperience.map((exp, index) => (
+                <div key={index} className="p-2 border rounded-md bg-white">
+                    <p><strong>경력내용:</strong> {exp.details}</p>
+                    <p><strong>근무처:</strong> {exp.workplace}</p>
+                    <p><strong>근무기간:</strong> {exp.startDate} ~ {exp.endDate || '현재 근무중'} ({exp.totalMonths}개월)</p>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function TrainingHistoryDetails({ trainingHistory }) {
+    if (!trainingHistory || trainingHistory.length === 0) {
+        return <p>N/A</p>;
+    }
+
+    return (
+        <div className="space-y-2">
+            {trainingHistory.map((training, index) => (
+                <div key={index} className="p-2 border rounded-md bg-white">
+                    <p><strong>교육명:</strong> {training.courseName}</p>
+                    <p><strong>교육기관:</strong> {training.institution}</p>
+                    <p><strong>교육기간:</strong> {training.startDate} ~ {training.endDate} ({training.totalHours}시간)</p>
+                </div>
+            ))}
+        </div>
+    );
+}
+
+function AnalysisExperienceForm({ analysisExperience, setAnalysisExperience }) {
+    const [details, setDetails] = useState('');
+    const [workplace, setWorkplace] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [isCurrent, setIsCurrent] = useState(false);
+
+    const handleAdd = () => {
+        if (!details || !workplace || !startDate) return;
+
+        const newExperience = {
+            id: Date.now(),
+            details,
+            workplace,
+            startDate,
+            endDate: isCurrent ? null : endDate,
+            totalMonths: calculateMonths(startDate, isCurrent ? null : endDate),
+        };
+        setAnalysisExperience([...analysisExperience, newExperience]);
+        setDetails('');
+        setWorkplace('');
+        setStartDate('');
+        setEndDate('');
+        setIsCurrent(false);
+    };
+
+    const handleDelete = (id) => {
+        setAnalysisExperience(analysisExperience.filter(exp => exp.id !== id));
+    };
+
+    const calculateMonths = (start, end) => {
+        const startDate = new Date(start);
+        const endDate = end ? new Date(end) : new Date();
+        if (isNaN(startDate.getTime())) return 0;
+
+        let months = (endDate.getFullYear() - startDate.getFullYear()) * 12;
+        months -= startDate.getMonth();
+        months += endDate.getMonth();
+        return months <= 0 ? 0 : months;
+    };
+
+    return (
+        <div className="p-4 border rounded-lg mt-4">
+            <h4 className="font-semibold">방사능분석 경력</h4>
+            <div className="space-y-2 mb-4">
+                {analysisExperience.map(exp => (
+                    <div key={exp.id} className="flex items-center justify-between p-2 border rounded-md">
+                        <div>
+                            <p><strong>{exp.details}</strong> @ {exp.workplace}</p>
+                            <p className="text-sm">{exp.startDate} ~ {exp.endDate || '현재'}</p>
+                        </div>
+                        <button type="button" onClick={() => handleDelete(exp.id)} className="text-red-500">삭제</button>
+                    </div>
+                ))}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <input type="text" value={details} onChange={e => setDetails(e.target.value)} placeholder="경력내용" className="w-full p-2 border rounded-md" />
+                <input type="text" value={workplace} onChange={e => setWorkplace(e.target.value)} placeholder="근무처" className="w-full p-2 border rounded-md" />
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} placeholder="근무시작일" className="w-full p-2 border rounded-md" />
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} placeholder="근무종료일" disabled={isCurrent} className="w-full p-2 border rounded-md" />
+            </div>
+            <div className="flex items-center mt-2">
+                <input type="checkbox" checked={isCurrent} onChange={e => setIsCurrent(e.target.checked)} id="isCurrent" className="mr-2" />
+                <label htmlFor="isCurrent">현재 계속 근무</label>
+            </div>
+            <button type="button" onClick={handleAdd} className="mt-2 bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">추가</button>
+        </div>
+    );
+}
+
+function TrainingHistoryForm({ trainingHistory, setTrainingHistory }) {
+    const [courseName, setCourseName] = useState('');
+    const [institution, setInstitution] = useState('');
+    const [startDate, setStartDate] = useState('');
+    const [endDate, setEndDate] = useState('');
+    const [totalHours, setTotalHours] = useState('');
+
+    const handleAdd = () => {
+        if (!courseName || !institution || !startDate || !endDate || !totalHours) return;
+        const newTraining = {
+            id: Date.now(),
+            courseName,
+            institution,
+            startDate,
+            endDate,
+            totalHours,
+        };
+        setTrainingHistory([...trainingHistory, newTraining]);
+        setCourseName('');
+        setInstitution('');
+        setStartDate('');
+        setEndDate('');
+        setTotalHours('');
+    };
+
+    const handleDelete = (id) => {
+        setTrainingHistory(trainingHistory.filter(item => item.id !== id));
+    };
+
+    return (
+        <div className="p-4 border rounded-lg mt-4">
+            <h4 className="font-semibold">교육 이력</h4>
+            <div className="space-y-2 mb-4">
+                {trainingHistory.map(item => (
+                    <div key={item.id} className="flex items-center justify-between p-2 border rounded-md">
+                        <div>
+                            <p><strong>{item.courseName}</strong> @ {item.institution}</p>
+                            <p className="text-sm">{item.startDate} ~ {item.endDate} ({item.totalHours}시간)</p>
+                        </div>
+                        <button type="button" onClick={() => handleDelete(item.id)} className="text-red-500">삭제</button>
+                    </div>
+                ))}
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                <input type="text" value={courseName} onChange={e => setCourseName(e.target.value)} placeholder="교육명" className="w-full p-2 border rounded-md" />
+                <input type="text" value={institution} onChange={e => setInstitution(e.target.value)} placeholder="교육기관" className="w-full p-2 border rounded-md" />
+                <input type="date" value={startDate} onChange={e => setStartDate(e.target.value)} placeholder="교육시작일" className="w-full p-2 border rounded-md" />
+                <input type="date" value={endDate} onChange={e => setEndDate(e.target.value)} placeholder="교육종료일" className="w-full p-2 border rounded-md" />
+                <input type="number" value={totalHours} onChange={e => setTotalHours(e.target.value)} placeholder="총 이수시간" className="w-full p-2 border rounded-md" />
+            </div>
+            <button type="button" onClick={handleAdd} className="mt-2 bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">추가</button>
+        </div>
+    );
+}
 
 function UserManagement() {
     const [users, setUsers] = useState([]);
@@ -692,20 +1425,22 @@ function UserManagement() {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [editingUser, setEditingUser] = useState(null);
     const [message, setMessage] = useState('');
+    const [uploadFile, setUploadFile] = useState(null);
+    const [expandedUserId, setExpandedUserId] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
         const usersRef = collection(db, `/artifacts/${appId}/public/data/users`);
-        const unsubscribe = onSnapshot(usersRef, (snapshot) => {
-            const userList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setUsers(userList);
+        const unsubscribe = onSnapshot(query(usersRef, orderBy("name")), (snapshot) => {
+            setUsers(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setIsLoading(false);
         });
-        return () => unsubscribe();
+        return unsubscribe;
     }, []);
 
     const handleEdit = (user) => { setMessage(''); setEditingUser(user); setIsModalOpen(true); };
     const handleAddNew = () => { setMessage(''); setEditingUser(null); setIsModalOpen(true); };
-    const handleCloseModal = (successMessage = '') => { setIsModalOpen(false); setEditingUser(null); if (successMessage) { setMessage(successMessage); } };
+    const handleCloseModal = (successMessage = '') => { setIsModalOpen(false); setEditingUser(null); if (successMessage) setMessage(successMessage); };
     
     const handlePasswordReset = async (email) => {
         setMessage('');
@@ -717,75 +1452,250 @@ function UserManagement() {
         }
     };
 
-    if (isLoading) { return <div>사용자 목록을 불러오는 중...</div>; }
+    const userFields = [
+        { label: '이름', key: 'name' }, { label: '이메일', key: 'email' }, { label: '연락처', key: 'contact' }, { label: '소속', key: 'organization' }, 
+        { label: '직급', key: 'position' }, { label: '자격 등급', key: 'qualificationLevel' }, { label: '생년월일', key: 'birthdate' }, 
+        { label: '최종학력', key: 'finalEducation' }, { label: '전공', key: 'major' }, { label: '검사소', key: 'inspectionOffice' },
+        { label: '분석기관', key: 'analysisAgency' },
+        { label: '프로필사진', key: 'profilePictureUrl' },
+        { label: '서명이미지', key: 'signatureUrl' }
+    ];
+
+    const handleDownloadData = () => {
+        const dataToExport = users.map(user => {
+            let row = {};
+            userFields.forEach(field => { 
+                const value = user[field.key];
+                row[field.label] = Array.isArray(value) ? value.join(', ') : value || ''; 
+            });
+            return row;
+        });
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Users");
+        XLSX.writeFile(workbook, "사용자_목록.xlsx");
+    };
+
+    const handleDownloadTemplate = () => {
+        const headers = [userFields.map(f => f.label)];
+        const worksheet = XLSX.utils.aoa_to_sheet(headers);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+        XLSX.writeFile(workbook, "사용자_업로드_템플릿.xlsx");
+    };
+
+    const handleExcelUpload = () => {
+        if (!uploadFile) return;
+        const confirmation = window.confirm("엑셀 파일로 사용자 정보를 업데이트합니다. 이메일 주소가 일치하는 사용자의 정보가 덮어쓰기됩니다. 계속하시겠습니까?");
+        if (!confirmation) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet);
+
+                if (json.length === 0) { setMessage("엑셀 파일에 데이터가 없습니다."); return; }
+
+                setMessage("업로드 및 업데이트 시작...");
+                const updatePromises = [];
+                const labelToKey = userFields.reduce((acc, field) => ({ ...acc, [field.label]: field.key }), {});
+
+                json.forEach(row => {
+                    const email = row['이메일'];
+                    if (!email) return;
+                    const userToUpdate = users.find(u => u.email === email);
+                    if (userToUpdate) {
+                        const newUserData = {};
+                        for (const label in row) {
+                            const key = labelToKey[label];
+                            if (key && key !== 'email') {
+                                if (key === 'inspectionOffice' || key === 'analysisAgency') {
+                                    newUserData[key] = row[label] ? row[label].split(',').map(s => s.trim()) : [];
+                                } else {
+                                    newUserData[key] = row[label];
+                                }
+                            }
+                        }
+                        updatePromises.push(updateDoc(doc(db, `/artifacts/${appId}/public/data/users`, userToUpdate.id), newUserData));
+                    }
+                });
+
+                await Promise.all(updatePromises);
+                setMessage(`${updatePromises.length}명의 사용자 정보가 성공적으로 업데이트되었습니다.`);
+            } catch (error) {
+                setMessage(`엑셀 업로드 실패: ${error.message}`);
+            }
+        };
+        reader.readAsArrayBuffer(uploadFile);
+    };
+
+    if (isLoading) return <div>사용자 목록을 불러오는 중...</div>;
+
+    const filteredUsers = users.filter(user => {
+        const lowerCaseSearchTerm = searchTerm.toLowerCase();
+        return (
+            user.name.toLowerCase().includes(lowerCaseSearchTerm) ||
+            user.email.toLowerCase().includes(lowerCaseSearchTerm) ||
+            user.organization.toLowerCase().includes(lowerCaseSearchTerm) ||
+            user.qualificationLevel.toLowerCase().includes(lowerCaseSearchTerm)
+        );
+    });
 
     return (
         <div>
-            <div className="flex justify-between items-center mb-6"> <h2 className="text-2xl font-bold">회원 관리</h2> <button onClick={handleAddNew} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 transition"> 신규 회원 추가 </button> </div>
+            <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+                <h2 className="text-2xl font-bold">회원 관리</h2>
+                <div className="flex items-center gap-2">
+                    <span className="text-gray-700 font-semibold">검색</span>
+                    <input type="text" placeholder="이름, 이메일, 소속 등으로 검색" className="p-2 border rounded-md flex-grow max-w-xs" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+                </div>
+                <div className="flex gap-2 flex-wrap">
+                    <button onClick={handleDownloadTemplate} className="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600">엑셀 템플릿</button>
+                    <button onClick={handleDownloadData} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">엑셀 다운로드</button>
+                    <div className="flex items-center gap-2 border p-2 rounded-lg">
+                        <input type="file" accept=".xlsx, .xls" onChange={(e) => setUploadFile(e.target.files[0])} className="text-sm"/>
+                        <button onClick={handleExcelUpload} disabled={!uploadFile} className="bg-purple-600 text-white font-bold py-1 px-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400">업로드</button>
+                    </div>
+                    <button onClick={handleAddNew} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">신규 회원 추가</button>
+                </div>
+            </div>
             {message && <p className={`p-3 rounded-lg mb-4 ${message.includes('실패') ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>{message}</p>}
             {isModalOpen && <UserModal user={editingUser} onClose={handleCloseModal} />}
             
-            {/* Desktop Table */}
-            <div className="hidden md:block bg-white shadow-md rounded-lg overflow-hidden">
-                <table className="min-w-full leading-normal">
-                    <thead><tr><th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">이름</th><th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">이메일</th><th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">소속</th><th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">자격 등급</th><th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100"></th></tr></thead>
-                    <tbody>
-                        {users.map(user => (
-                            <tr key={user.id}>
-                                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">{user.name}</td><td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">{user.email}</td><td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">{user.organization}</td><td className="px-5 py-5 border-b border-gray-200 bg-white text-sm">{user.qualificationLevel}</td>
-                                <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm text-right">
-                                    <button onClick={() => handleEdit(user)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
-                                    <button onClick={() => handlePasswordReset(user.email)} className="text-red-600 hover:text-red-900">비밀번호 초기화</button>
+            <div className="hidden md:block bg-white shadow-md rounded-lg overflow-hidden"><table className="min-w-full leading-normal">
+                <thead><tr>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase"> </th>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase">이름</th>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase">이메일</th>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase">연락처</th>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase">소속</th>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase">자격 등급</th>
+                    <th className="px-5 py-3 border-b-2"></th>
+                </tr></thead>
+                <tbody>{filteredUsers.map(user => (
+                    <React.Fragment key={user.id}>
+                        <tr className="cursor-pointer hover:bg-gray-50" onClick={() => setExpandedUserId(expandedUserId === user.id ? null : user.id)}>
+                            <td className="px-5 py-5 border-b text-sm">{expandedUserId === user.id ? '▼' : '▶'}</td>
+                            <td className="px-5 py-5 border-b text-sm">{user.name}</td>
+                            <td className="px-5 py-5 border-b text-sm">{user.email}</td>
+                            <td className="px-5 py-5 border-b text-sm">{user.contact}</td>
+                            <td className="px-5 py-5 border-b text-sm">{user.organization}</td>
+                            <td className="px-5 py-5 border-b text-sm">{user.qualificationLevel}</td>
+                            <td className="px-5 py-5 border-b text-sm text-right">
+                                <button onClick={(e) => { e.stopPropagation(); handleEdit(user); }} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
+                                <button onClick={(e) => { e.stopPropagation(); handlePasswordReset(user.email);}} className="text-red-600 hover:text-red-900">비밀번호 초기화</button>
+                            </td>
+                        </tr>
+                        {expandedUserId === user.id && (
+                            <tr>
+                                <td colSpan="6" className="p-5 bg-gray-100">
+                                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                        {userFields.map(field => (
+                                            <div key={field.key} className="py-1">
+                                                <span className="font-semibold">{field.label}: </span>
+                                                {field.key === 'profilePictureUrl' ? 
+                                                    (user.profilePictureUrl ? <img src={user.profilePictureUrl} alt="Profile" className="w-24 h-24 rounded-full object-cover" /> : 'N/A') :
+                                                    (field.key === 'signatureUrl' ?
+                                                        (user.signatureUrl ? <img src={user.signatureUrl} alt="Signature" className="w-24 h-24 object-contain" /> : 'N/A') :
+                                                        <span>{Array.isArray(user[field.key]) ? user[field.key].join(', ') : user[field.key] || 'N/A'}</span>
+                                                    )
+                                                }
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="mt-4">
+                                        <h4 className="font-semibold text-lg mb-2">방사능분석 경력</h4>
+                                        <AnalysisExperienceDetails analysisExperience={user.analysisExperience} />
+                                    </div>
+                                    <div className="mt-4">
+                                        <h4 className="font-semibold text-lg mb-2">교육 이력</h4>
+                                        <TrainingHistoryDetails trainingHistory={user.trainingHistory} />
+                                    </div>
                                 </td>
                             </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-
-            {/* Mobile Card List */}
-            <div className="md:hidden space-y-4">
-                {users.map(user => (
-                    <div key={user.id} className="bg-white shadow-md rounded-lg p-4">
-                        <div className="font-bold text-lg">{user.name}</div>
-                        <div className="text-sm text-gray-600">{user.email}</div>
-                        <div className="text-sm text-gray-600">{user.organization} - {user.qualificationLevel}</div>
-                        <div className="mt-4 pt-4 border-t flex justify-end space-x-4">
-                            <button onClick={() => handleEdit(user)} className="text-indigo-600 hover:text-indigo-900">수정</button>
-                            <button onClick={() => handlePasswordReset(user.email)} className="text-red-600 hover:text-red-900">비밀번호 초기화</button>
-                        </div>
-                    </div>
+                        )}
+                    </React.Fragment>
                 ))}
-            </div>
+                </tbody>
+            </table></div>
         </div>
     );
 }
 
 function UserModal({ user, onClose }) {
     const isEditing = user !== null;
-    const [formData, setFormData] = useState({ email: user?.email || '', password: '', name: user?.name || '', organization: user?.organization || '', position: user?.position || '', qualificationLevel: user?.qualificationLevel || '분석원', });
+    const [formData, setFormData] = useState({ email: user?.email || '', password: '', name: user?.name || '', contact: user?.contact || '', organization: user?.organization || '', position: user?.position || '', qualificationLevel: user?.qualificationLevel || '분석원', birthdate: user?.birthdate || '', finalEducation: user?.finalEducation || '', major: user?.major || '', inspectionOffice: user?.inspectionOffice || [] });
+    const [analysisExperience, setAnalysisExperience] = useState(user?.analysisExperience || []);
+    const [trainingHistory, setTrainingHistory] = useState(user?.trainingHistory || []);
+    const [photoFile, setPhotoFile] = useState(null);
+    const [photoPreview, setPhotoPreview] = useState(user?.profilePictureUrl || null);
+    const [signatureFile, setSignatureFile] = useState(null);
+    const [signaturePreview, setSignaturePreview] = useState(user?.signatureUrl || null);
     const [error, setError] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
     const qualificationLevels = ['시료채취원', '기술책임자', '분석원', '분석보조원', '관리자', '해수부', '협회'];
+    const [inspectionOffices, setInspectionOffices] = useState([]);
+    const [analysisAgencies, setAnalysisAgencies] = useState([]);
+
+    useEffect(() => {
+        const fetchSelectData = async () => {
+            try {
+                const officesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`));
+                setInspectionOffices(officesSnapshot.docs.map(doc => doc.data().name));
+
+                const agenciesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/analysis_agencies`));
+                setAnalysisAgencies(agenciesSnapshot.docs.map(doc => doc.data().name));
+            } catch (err) {
+                setError("검사소 또는 분석기관 목록을 불러오는 데 실패했습니다.");
+            }
+        };
+        fetchSelectData();
+    }, []);
 
     const handleChange = (e) => { const { name, value } = e.target; setFormData(prev => ({ ...prev, [name]: value })); };
+    const handleMultiSelectChange = (e) => {
+        const { name, options } = e.target;
+        const value = [];
+        for (let i = 0, l = options.length; i < l; i++) {
+            if (options[i].selected) {
+                value.push(options[i].value);
+            }
+        }
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+    const handlePhotoChange = (e) => { const file = e.target.files[0]; if (file) { setPhotoFile(file); setPhotoPreview(URL.createObjectURL(file)); } };
+    const handleSignatureChange = (e) => { const file = e.target.files[0]; if (file) { setSignatureFile(file); setSignaturePreview(URL.createObjectURL(file)); } };
 
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
-        if (!isEditing && (!formData.password || formData.password.length < 6)) { setError("신규 사용자는 6자 이상의 비밀번호를 입력해야 합니다."); return; }
+        if (!isEditing && !formData.password) { setError("신규 사용자는 비밀번호를 입력해야 합니다."); return; }
         setIsSubmitting(true);
         try {
+            let userId = user?.id;
+            let profilePictureUrl = user?.profilePictureUrl || '';
+            let signatureUrl = user?.signatureUrl || '';
+            const uploadAndGetURL = async (uid, file, path) => { const storageRef = ref(storage, `${path}/${uid}`); await uploadBytes(storageRef, file); return await getDownloadURL(storageRef); };
+
+            const dataToSave = { ...formData, profilePictureUrl, signatureUrl, analysisExperience, trainingHistory };
+
             if (isEditing) {
-                const userRef = doc(db, `/artifacts/${appId}/public/data/users`, user.id);
-                const { email, password, ...updateData } = formData;
-                await updateDoc(userRef, updateData);
+                if (photoFile) dataToSave.profilePictureUrl = await uploadAndGetURL(userId, photoFile, 'profile_pictures');
+                if (signatureFile) dataToSave.signatureUrl = await uploadAndGetURL(userId, signatureFile, 'signatures');
+                const { email, password, ...updateData } = dataToSave;
+                await updateDoc(doc(db, `/artifacts/${appId}/public/data/users`, userId), updateData);
                 onClose("사용자 정보가 성공적으로 수정되었습니다.");
             } else {
                 const userCredential = await createUserWithEmailAndPassword(auth, formData.email, formData.password);
-                const newUser = userCredential.user;
-                const { password, ...userDataToSave } = formData;
-                await setDoc(doc(db, `/artifacts/${appId}/public/data/users`, newUser.uid), { ...userDataToSave, uid: newUser.uid });
+                userId = userCredential.user.uid;
+                if (photoFile) dataToSave.profilePictureUrl = await uploadAndGetURL(userId, photoFile, 'profile_pictures');
+                if (signatureFile) dataToSave.signatureUrl = await uploadAndGetURL(userId, signatureFile, 'signatures');
+                const { password, ...userDataToSave } = dataToSave;
+                await setDoc(doc(db, `/artifacts/${appId}/public/data/users`, userId), { ...userDataToSave, uid: userId });
                 onClose("신규 사용자가 성공적으로 추가되었습니다.");
             }
         } catch (error) {
@@ -796,19 +1706,98 @@ function UserModal({ user, onClose }) {
     };
     
     return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
-            <div className="bg-white rounded-lg shadow-xl p-6 sm:p-8 w-full max-w-md">
-                <h3 className="text-xl font-bold mb-6">{isEditing ? '회원 정보 수정' : '신규 회원 추가'}</h3>
-                {error && <p className="text-red-500 text-sm bg-red-100 p-2 rounded mb-4">{error}</p>}
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="이메일" required disabled={isEditing} className="w-full p-2 border rounded-md disabled:bg-gray-100" />
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4"><div className="bg-white rounded-lg shadow-xl p-6 w-full max-w-lg"><h3 className="text-xl font-bold mb-6">{isEditing ? '회원 정보 수정' : '신규 회원 추가'}</h3>{error && <p className="text-red-500 text-sm bg-red-100 p-2 rounded mb-4">{error}</p>}
+            <form onSubmit={handleSubmit} className="space-y-4 max-h-[70vh] overflow-y-auto pr-2">
+                <div className="flex items-center gap-4">
+                    <img src={photoPreview || `https://ui-avatars.com/api/?name=${formData.name || 'U'}&background=random`} alt="Profile" className="w-24 h-24 rounded-full object-cover" />
+                    <div><label className="block text-sm font-medium text-gray-700">프로필 사진</label><input type="file" accept="image/*" onChange={handlePhotoChange} className="mt-1 w-full"/></div>
+                </div>
+                <div className="flex items-center gap-4">
+                    {signaturePreview && <img src={signaturePreview} alt="Signature" className="w-24 h-24 object-contain border rounded-md" />}
+                    <div><label className="block text-sm font-medium text-gray-700">서명 이미지</label><input type="file" accept="image/*" onChange={handleSignatureChange} className="mt-1 w-full"/></div>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="이메일" required disabled={isEditing} className="w-full p-2 border rounded-md" />
                     {!isEditing && <input type="password" name="password" value={formData.password} onChange={handleChange} placeholder="비밀번호 (6자 이상)" required className="w-full p-2 border rounded-md" />}
                     <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="이름" required className="w-full p-2 border rounded-md" />
+                    <input type="text" name="contact" value={formData.contact} onChange={handleChange} placeholder="연락처" className="w-full p-2 border rounded-md" />
                     <input type="text" name="organization" value={formData.organization} onChange={handleChange} placeholder="소속 기관" required className="w-full p-2 border rounded-md" />
                     <input type="text" name="position" value={formData.position} onChange={handleChange} placeholder="직급" required className="w-full p-2 border rounded-md" />
-                    <div><label className="block text-sm font-medium text-gray-700">자격 등급</label><select name="qualificationLevel" value={formData.qualificationLevel} onChange={handleChange} className="mt-1 block w-full rounded-md border-gray-300 shadow-sm p-2">{qualificationLevels.map(level => <option key={level} value={level}>{level}</option>)}</select></div>
+                    <select name="qualificationLevel" value={formData.qualificationLevel} onChange={handleChange} className="w-full p-2 border rounded-md">{qualificationLevels.map(level => <option key={level}>{level}</option>)}</select>
+                    <input type="date" name="birthdate" value={formData.birthdate} onChange={handleChange} className="w-full p-2 border rounded-md" />
+                    <input type="text" name="finalEducation" value={formData.finalEducation} onChange={handleChange} placeholder="최종학력" className="w-full p-2 border rounded-md" />
+                    <input type="text" name="major" value={formData.major} onChange={handleChange} placeholder="전공" className="w-full p-2 border rounded-md" />
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">검사소 (다중 선택 가능)</label>
+                        <select multiple name="inspectionOffice" value={formData.inspectionOffice} onChange={handleMultiSelectChange} className="w-full h-24 p-2 border rounded-md">
+                            {inspectionOffices.map(office => <option key={office} value={office}>{office}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">분석기관 (다중 선택 가능)</label>
+                        <select multiple name="analysisAgency" value={formData.analysisAgency} onChange={handleMultiSelectChange} className="w-full h-24 p-2 border rounded-md">
+                            {analysisAgencies.map(agency => <option key={agency} value={agency}>{agency}</option>)}
+                        </select>
+                    </div>
+                </div>
+                <AnalysisExperienceForm analysisExperience={analysisExperience} setAnalysisExperience={setAnalysisExperience} />
+                <TrainingHistoryForm trainingHistory={trainingHistory} setTrainingHistory={setTrainingHistory} />
+                <div className="flex justify-end gap-4 pt-4">
+                    <button type="button" onClick={onClose} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">취소</button>
+                    <button type="submit" disabled={isSubmitting} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">{isSubmitting ? '저장 중...' : '저장'}</button>
+                </div>
+            </form>
+        </div></div>
+    );
+}
+
+// --- Generic Management Components ---
+
+function GenericModal({ isOpen, onClose, onSubmit, item, fields, title }) {
+    const [formData, setFormData] = useState({});
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        const initialData = fields.reduce((acc, field) => {
+            acc[field.name] = item?.[field.name] || '';
+            return acc;
+        }, {});
+        setFormData(initialData);
+    }, [item, fields, isOpen]);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            await onSubmit(formData);
+            onClose();
+        } catch (error) {
+            console.error("Submit failed:", error);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex justify-center items-center p-4">
+            <div className="bg-white rounded-lg shadow-xl p-6 sm:p-8 w-full max-w-lg">
+                <h3 className="text-xl font-bold mb-6">{title}</h3>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    {fields.map(field => (
+                        <div key={field.name}>
+                            <label className="block text-sm font-medium text-gray-700">{field.label}</label>
+                            <input type={field.type || 'text'} name={field.name} value={formData[field.name] || ''} onChange={handleChange} placeholder={field.label} required className="mt-1 w-full p-2 border rounded-md" />
+                        </div>
+                    ))}
                     <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={() => onClose()} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">취소</button>
+                        <button type="button" onClick={onClose} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">취소</button>
                         <button type="submit" disabled={isSubmitting} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700 disabled:bg-gray-400">{isSubmitting ? '저장 중...' : '저장'}</button>
                     </div>
                 </form>
@@ -817,3 +1806,477 @@ function UserModal({ user, onClose }) {
     );
 }
 
+function GenericManagement({ title, collectionName, itemFields, fieldLabels }) {
+    const [items, setItems] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingItem, setEditingItem] = useState(null);
+    const [message, setMessage] = useState('');
+    const [uploadFile, setUploadFile] = useState(null);
+    const [expandedItemId, setExpandedItemId] = useState(null);
+
+    const collectionRef = collection(db, `/artifacts/${appId}/public/data/${collectionName}`);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(query(collectionRef, orderBy("createdAt", "desc")), (snapshot) => {
+            setItems(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setIsLoading(false);
+        }, (error) => {
+            setMessage(`${title}을(를) 불러오는 데 실패했습니다.`);
+            setIsLoading(false);
+        });
+        return unsubscribe;
+    }, [collectionName, title]);
+
+    const handleAddNew = () => { setEditingItem(null); setIsModalOpen(true); };
+    const handleEdit = (item) => { setEditingItem(item); setIsModalOpen(true); };
+    const handleDelete = async (itemId) => {
+        if (!window.confirm("정말로 삭제하시겠습니까?")) return;
+        try {
+            await deleteDoc(doc(collectionRef, itemId));
+            setMessage("항목이 삭제되었습니다.");
+        } catch (error) {
+            setMessage(`삭제 실패: ${error.message}`);
+        }
+    };
+
+    const handleModalSubmit = async (formData) => {
+        if (editingItem) {
+            await updateDoc(doc(collectionRef, editingItem.id), formData);
+            setMessage("항목이 성공적으로 수정되었습니다.");
+        } else {
+            await addDoc(collectionRef, { ...formData, createdAt: Timestamp.now() });
+            setMessage("항목이 성공적으로 추가되었습니다.");
+        }
+    };
+
+    const handleDownloadData = () => {
+        const dataToExport = items.map(item => {
+            let row = { id: item.id };
+            itemFields.forEach((field, index) => { row[fieldLabels[index]] = item[field] || ''; });
+            return row;
+        });
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, title);
+        XLSX.writeFile(workbook, `${collectionName}.xlsx`);
+    };
+
+    const handleDownloadTemplate = () => {
+        const headers = [['id', ...fieldLabels]];
+        const worksheet = XLSX.utils.aoa_to_sheet(headers);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+        XLSX.writeFile(workbook, `${collectionName}_template.xlsx`);
+    };
+
+    const handleExcelUpload = () => {
+        if (!uploadFile) return;
+        const confirmation = window.confirm("엑셀 파일로 정보를 일괄 업로드합니다. ID가 일치하는 항목은 덮어쓰기되고, ID가 없는 항목은 새로 추가됩니다. 계속하시겠습니까?");
+        if (!confirmation) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet);
+
+                if (json.length === 0) { setMessage("엑셀 파일에 데이터가 없습니다."); return; }
+
+                setMessage("업로드 및 업데이트 시작...");
+                const promises = [];
+                const labelToKey = itemFields.reduce((acc, field, index) => ({ ...acc, [fieldLabels[index]]: field }), {});
+
+                json.forEach(row => {
+                    const { id, ...rowData } = row;
+                    const newDocData = {};
+                    for (const label in rowData) {
+                        const key = labelToKey[label];
+                        if (key) newDocData[key] = row[label];
+                    }
+
+                    if (id && items.find(item => item.id === id)) {
+                        promises.push(updateDoc(doc(collectionRef, id), newDocData));
+                    } else {
+                        promises.push(addDoc(collectionRef, { ...newDocData, createdAt: Timestamp.now() }));
+                    }
+                });
+
+                await Promise.all(promises);
+                setMessage(`${promises.length}개 항목이 처리되었습니다.`);
+            } catch (error) {
+                setMessage(`엑셀 업로드 실패: ${error.message}`);
+            }
+        };
+        reader.readAsArrayBuffer(uploadFile);
+    };
+    
+    const fieldsForModal = itemFields.map((fieldName, index) => ({ name: fieldName, label: fieldLabels[index] }));
+
+    if (isLoading) return <div>{title} 목록을 불러오는 중...</div>;
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+                <h2 className="text-2xl font-bold">{title}</h2>
+                <div className="flex gap-2 flex-wrap">
+                    <button onClick={handleDownloadTemplate} className="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600">엑셀 템플릿</button>
+                    <button onClick={handleDownloadData} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">엑셀 다운로드</button>
+                    <div className="flex items-center gap-2 border p-2 rounded-lg">
+                        <input type="file" accept=".xlsx, .xls" onChange={(e) => setUploadFile(e.target.files[0])} className="text-sm"/>
+                        <button onClick={handleExcelUpload} disabled={!uploadFile} className="bg-purple-600 text-white font-bold py-1 px-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400">업로드</button>
+                    </div>
+                    <button onClick={handleAddNew} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">신규 추가</button>
+                </div>
+            </div>
+            {message && <p className="p-3 rounded-lg mb-4 bg-blue-100 text-blue-800">{message}</p>}
+            <GenericModal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} onSubmit={handleModalSubmit} item={editingItem} fields={fieldsForModal} title={editingItem ? `${title} 수정` : `신규 ${title} 추가`} />
+            <div className="bg-white shadow-md rounded-lg overflow-x-auto"><table className="min-w-full leading-normal">
+                <thead><tr>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase"> </th>
+                    {fieldLabels.map(label => <th key={label} className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider">{label}</th>)}
+                    <th className="px-5 py-3 border-b-2 border-gray-200 bg-gray-100"></th>
+                </tr></thead>
+                <tbody>{items.map(item => (
+                    <React.Fragment key={item.id}>
+                        <tr className="cursor-pointer hover:bg-gray-50" onClick={() => setExpandedItemId(expandedItemId === item.id ? null : item.id)}>
+                            <td className="px-5 py-5 border-b text-sm">{expandedItemId === item.id ? '▼' : '▶'}</td>
+                            {itemFields.map(field => <td key={field} className="px-5 py-5 border-b border-gray-200 bg-white text-sm">{item[field]}</td>)}
+                            <td className="px-5 py-5 border-b border-gray-200 bg-white text-sm text-right">
+                                <button onClick={(e) => { e.stopPropagation(); handleEdit(item);}} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
+                                <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id);}} className="text-red-600 hover:text-red-900">삭제</button>
+                            </td>
+                        </tr>
+                        {expandedItemId === item.id && (
+                            <tr>
+                                <td colSpan={itemFields.length + 2} className="p-5 bg-gray-100">
+                                    <div className="grid grid-cols-2 gap-x-8 gap-y-2">
+                                        {itemFields.map((field, index) => (
+                                            <div key={field}><strong>{fieldLabels[index]}:</strong> {item[field] || 'N/A'}</div>
+                                        ))}
+                                    </div>
+                                </td>
+                            </tr>
+                        )}
+                    </React.Fragment>
+                ))}</tbody>
+            </table></div>
+        </div>
+    );
+}
+
+function InspectionOfficeManagement() {
+    const fields = ['name', 'address', 'contact', 'coordinates', 'managerName', 'managerContact'];
+    const labels = ['검사소명', '주소', '대표연락처', '좌표', '담당자', '담당자 연락처'];
+    return <GenericManagement title="검사소 관리" collectionName="inspection_offices" itemFields={fields} fieldLabels={labels} />;
+}
+
+function AnalysisAgencyManagement() {
+    const fields = ['name', 'address', 'contact', 'coordinates', 'managerName', 'managerContact'];
+    const labels = ['분석기관명', '주소', '대표연락처', '좌표', '담당자', '담당자 연락처'];
+    return <GenericManagement title="분석기관 관리" collectionName="analysis_agencies" itemFields={fields} fieldLabels={labels} />;
+}
+
+function EquipmentManagement() {
+    const [view, setView] = useState('list'); // 'list' or 'form'
+    const [selectedItem, setSelectedItem] = useState(null);
+    const [equipment, setEquipment] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [message, setMessage] = useState('');
+    const [uploadFile, setUploadFile] = useState(null);
+    const [expandedId, setExpandedId] = useState(null);
+    const collectionRef = collection(db, `/artifacts/${appId}/public/data/equipment`);
+
+    const equipmentFields = [
+        {label: '장비명', key: 'name'}, {label: '모델명', key: 'model'}, {label: '검출기 S/N', key: 'detectorSn'},
+        {label: '제조회사', key: 'manufacturer'}, {label: '취득일자', key: 'acquisitionDate'}, {label: '상대효율', key: 'relativeEfficiency'},
+        {label: '시료자동교환장치', key: 'autoSampler'}, {label: '분석기관명', key: 'agency'}, {label: '관리자', key: 'manager'}, {label: '등록구분', key: 'registrationType'}
+    ];
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(query(collectionRef, orderBy("name")), (snapshot) => {
+            setEquipment(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+            setIsLoading(false);
+        });
+        return unsubscribe;
+    }, []);
+
+    const handleSave = async (data) => {
+        try {
+            if (selectedItem) {
+                await updateDoc(doc(collectionRef, selectedItem.id), data);
+                setMessage("장비 정보가 수정되었습니다.");
+            } else {
+                await addDoc(collectionRef, { ...data, createdAt: Timestamp.now() });
+                setMessage("장비가 추가되었습니다.");
+            }
+            setView('list');
+        } catch (error) {
+            setMessage(`저장 실패: ${error.message}`);
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (!window.confirm("정말로 이 장비를 삭제하시겠습니까?")) return;
+        try {
+            await deleteDoc(doc(collectionRef, id));
+            setMessage("장비가 삭제되었습니다.");
+        } catch (error) {
+            setMessage(`삭제 실패: ${error.message}`);
+        }
+    };
+
+    const handleDownloadData = () => {
+        const dataToExport = equipment.map(item => {
+            let row = { id: item.id };
+            equipmentFields.forEach(field => { row[field.label] = item[field.key] || ''; });
+            return row;
+        });
+        const worksheet = XLSX.utils.json_to_sheet(dataToExport);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Equipment");
+        XLSX.writeFile(workbook, "장비_목록.xlsx");
+    };
+
+    const handleDownloadTemplate = () => {
+        const headers = [['id', ...equipmentFields.map(f => f.label)]];
+        const worksheet = XLSX.utils.aoa_to_sheet(headers);
+        const workbook = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Template");
+        XLSX.writeFile(workbook, "장비_업로드_템플릿.xlsx");
+    };
+
+    const handleExcelUpload = () => {
+        if (!uploadFile) return;
+        const confirmation = window.confirm("엑셀 파일로 장비 정보를 일괄 업로드합니다. ID가 일치하는 항목은 덮어쓰기되고, ID가 없는 항목은 새로 추가됩니다. 사진과 교정이력은 업로드되지 않습니다. 계속하시겠습니까?");
+        if (!confirmation) return;
+
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const data = new Uint8Array(e.target.result);
+                const workbook = XLSX.read(data, { type: 'array' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet);
+
+                if (json.length === 0) { setMessage("엑셀 파일에 데이터가 없습니다."); return; }
+
+                setMessage("업로드 및 업데이트 시작...");
+                const promises = [];
+                const labelToKey = equipmentFields.reduce((acc, field) => ({ ...acc, [field.label]: field.key }), {});
+
+                json.forEach(row => {
+                    const { id, ...rowData } = row;
+                    const newDocData = {};
+                    for (const label in rowData) {
+                        const key = labelToKey[label];
+                        if (key) newDocData[key] = row[label];
+                    }
+
+                    if (id && equipment.find(item => item.id === id)) {
+                        promises.push(updateDoc(doc(collectionRef, id), newDocData));
+                    } else {
+                        promises.push(addDoc(collectionRef, { ...newDocData, createdAt: Timestamp.now() }));
+                    }
+                });
+
+                await Promise.all(promises);
+                setMessage(`${promises.length}개 항목이 처리되었습니다.`);
+            } catch (error) {
+                setMessage(`엑셀 업로드 실패: ${error.message}`);
+            }
+        };
+        reader.readAsArrayBuffer(uploadFile);
+    };
+
+    if (isLoading) return <div>장비 목록을 불러오는 중...</div>;
+
+    if (view === 'form') {
+        return (
+            <div>
+                <h2 className="text-2xl font-bold mb-6">{selectedItem ? '장비 이력 수정' : '신규 장비 추가'}</h2>
+                <EquipmentForm item={selectedItem} onSave={handleSave} onCancel={() => setView('list')} />
+            </div>
+        );
+    }
+
+    return (
+        <div>
+            <div className="flex justify-between items-center mb-6 flex-wrap gap-4">
+                <h2 className="text-2xl font-bold">장비 이력 관리</h2>
+                <div className="flex gap-2 flex-wrap">
+                    <button onClick={handleDownloadTemplate} className="bg-gray-500 text-white font-bold py-2 px-4 rounded-lg hover:bg-gray-600">엑셀 템플릿</button>
+                    <button onClick={handleDownloadData} className="bg-green-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-green-700">엑셀 다운로드</button>
+                    <div className="flex items-center gap-2 border p-2 rounded-lg">
+                        <input type="file" accept=".xlsx, .xls" onChange={(e) => setUploadFile(e.target.files[0])} className="text-sm"/>
+                        <button onClick={handleExcelUpload} disabled={!uploadFile} className="bg-purple-600 text-white font-bold py-1 px-3 rounded-lg hover:bg-purple-700 disabled:bg-gray-400">업로드</button>
+                    </div>
+                    <button onClick={() => { setSelectedItem(null); setView('form'); }} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">신규 장비 추가</button>
+                </div>
+            </div>
+            {message && <p className="p-3 rounded-lg mb-4 bg-blue-100 text-blue-800">{message}</p>}
+            <div className="bg-white shadow-md rounded-lg overflow-x-auto"><table className="min-w-full leading-normal">
+                <thead><tr>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase"> </th>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase">장비명</th>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase">모델명</th>
+                    <th className="px-5 py-3 border-b-2 text-left text-xs font-semibold uppercase">분석기관</th>
+                    <th className="px-5 py-3 border-b-2"></th>
+                </tr></thead>
+                <tbody>{equipment.map(item => (
+                    <React.Fragment key={item.id}>
+                        <tr className="cursor-pointer hover:bg-gray-50" onClick={() => setExpandedId(expandedId === item.id ? null : item.id)}>
+                            <td className="px-5 py-5 border-b text-sm">{expandedId === item.id ? '▼' : '▶'}</td>
+                            <td className="px-5 py-5 border-b text-sm">{item.name}</td>
+                            <td className="px-5 py-5 border-b text-sm">{item.model}</td>
+                            <td className="px-5 py-5 border-b text-sm">{item.agency}</td>
+                            <td className="px-5 py-5 border-b text-sm text-right">
+                                <button onClick={(e) => { e.stopPropagation(); setSelectedItem(item); setView('form'); }} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
+                                <button onClick={(e) => { e.stopPropagation(); handleDelete(item.id);}} className="text-red-600 hover:text-red-900">삭제</button>
+                            </td>
+                        </tr>
+                        {expandedId === item.id && (
+                            <tr>
+                                <td colSpan="5" className="p-5 bg-gray-100">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {equipmentFields.map(field => <div key={field.key}><strong>{field.label}:</strong> {item[field.key] || 'N/A'}</div>)}
+                                    </div>
+                                    <div className="mt-4 grid grid-cols-3 gap-4">
+                                        {item.photoUrls?.cert && <img src={item.photoUrls.cert} alt="필증" className="w-full h-32 object-cover"/>}
+                                        {item.photoUrls?.full && <img src={item.photoUrls.full} alt="전체" className="w-full h-32 object-cover"/>}
+                                        {item.photoUrls?.warranty && <img src={item.photoUrls.warranty} alt="보증서" className="w-full h-32 object-cover"/>}
+                                    </div>
+                                    {item.calibrationHistory && item.calibrationHistory.length > 0 && (
+                                        <div className="mt-4"><strong>교정 이력:</strong><ul>{item.calibrationHistory.map(h => <li key={h.id}>{h.date}: {h.content}</li>)}</ul></div>
+                                    )}
+                                </td>
+                            </tr>
+                        )}
+                    </React.Fragment>
+                ))}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    );
+}
+
+function CalibrationHistory({ history, setHistory }) {
+    const [date, setDate] = useState('');
+    const [content, setContent] = useState('');
+
+    const handleAdd = () => {
+        if (!date || !content) return;
+        const newItem = { date, content, id: Date.now() };
+        setHistory(prev => [...prev, newItem]);
+        setDate('');
+        setContent('');
+    };
+
+    const handleDelete = (id) => {
+        setHistory(prev => prev.filter(item => item.id !== id));
+    };
+
+    return (
+        <div className="p-4 border rounded-lg mt-4">
+            <h4 className="font-semibold">교정 이력</h4>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2 my-2">
+                <input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full p-2 border rounded-md" />
+                <input type="text" value={content} onChange={e => setContent(e.target.value)} placeholder="교정 내용" className="w-full p-2 border rounded-md" />
+                <button type="button" onClick={handleAdd} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg hover:bg-gray-300">추가</button>
+            </div>
+            <ul className="divide-y divide-gray-200 mt-2">
+                {history.map(item => (
+                    <li key={item.id} className="flex justify-between items-center py-2">
+                        <span>{item.date}: {item.content}</span>
+                        <button type="button" onClick={() => handleDelete(item.id)} className="text-red-500">삭제</button>
+                    </li>
+                ))}
+            </ul>
+        </div>
+    );
+}
+
+function EquipmentForm({ item, onSave, onCancel }) {
+    const [formData, setFormData] = useState({ name: '', acquisitionDate: '', model: '', relativeEfficiency: '', autoSampler: '', agency: '', manager: '', detectorSn: '', manufacturer: '', registrationType: '' });
+    const [calibrationHistory, setCalibrationHistory] = useState([]);
+    const [photos, setPhotos] = useState({ cert: null, full: null, warranty: null });
+    const [previews, setPreviews] = useState({ cert: null, full: null, warranty: null });
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (item) {
+            setFormData({ name: item.name || '', acquisitionDate: item.acquisitionDate || '', model: item.model || '', relativeEfficiency: item.relativeEfficiency || '', autoSampler: item.autoSampler || '', agency: item.agency || '', manager: item.manager || '', detectorSn: item.detectorSn || '', manufacturer: item.manufacturer || '', registrationType: item.registrationType || '' });
+            setCalibrationHistory(item.calibrationHistory || []);
+            setPreviews({ cert: item.photoUrls?.cert || null, full: item.photoUrls?.full || null, warranty: item.photoUrls?.warranty || null });
+        } else {
+            setFormData({ name: '', acquisitionDate: '', model: '', relativeEfficiency: '', autoSampler: '', agency: '', manager: '', detectorSn: '', manufacturer: '', registrationType: '' });
+            setCalibrationHistory([]);
+            setPreviews({ cert: null, full: null, warranty: null });
+        }
+    }, [item]);
+
+    const handleChange = (e) => setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+    const handlePhotoChange = (e) => {
+        const { name, files } = e.target;
+        if (files[0]) {
+            setPhotos(prev => ({ ...prev, [name]: files[0] }));
+            setPreviews(prev => ({ ...prev, [name]: URL.createObjectURL(files[0]) }));
+        }
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            const photoUrls = { ...item?.photoUrls };
+            for (const key in photos) {
+                if (photos[key]) {
+                    const storageRef = ref(storage, `equipment/${item?.id || Date.now()}/${key}`);
+                    await uploadBytes(storageRef, photos[key]);
+                    photoUrls[key] = await getDownloadURL(storageRef);
+                }
+            }
+            await onSave({ ...formData, calibrationHistory, photoUrls });
+        } catch (error) {
+            console.error("Equipment save failed:", error);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <form onSubmit={handleSubmit} className="space-y-4 max-h-[80vh] overflow-y-auto p-1">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <input name="name" value={formData.name} onChange={handleChange} placeholder="장비명" required className="p-2 border rounded-md" />
+                <input name="model" value={formData.model} onChange={handleChange} placeholder="모델명" className="p-2 border rounded-md" />
+                <input name="detectorSn" value={formData.detectorSn} onChange={handleChange} placeholder="검출기 S/N" className="p-2 border rounded-md" />
+                <input name="manufacturer" value={formData.manufacturer} onChange={handleChange} placeholder="제조회사" className="p-2 border rounded-md" />
+                <input type="date" name="acquisitionDate" value={formData.acquisitionDate} onChange={handleChange} placeholder="취득일자" className="p-2 border rounded-md" />
+                <input name="relativeEfficiency" value={formData.relativeEfficiency} onChange={handleChange} placeholder="상대효율" className="p-2 border rounded-md" />
+                <input name="autoSampler" value={formData.autoSampler} onChange={handleChange} placeholder="시료자동교환장치" className="p-2 border rounded-md" />
+                <input name="agency" value={formData.agency} onChange={handleChange} placeholder="분석기관명" className="p-2 border rounded-md" />
+                <input name="manager" value={formData.manager} onChange={handleChange} placeholder="관리자" className="p-2 border rounded-md" />
+                <input name="registrationType" value={formData.registrationType} onChange={handleChange} placeholder="등록구분" className="p-2 border rounded-md" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {[ {key: 'cert', label: '필증부착사진'}, {key: 'full', label: '장비전체사진'}, {key: 'warranty', label: '장비보증서류'} ].map(p => (
+                    <div key={p.key} className="text-center">
+                        <label className="text-sm font-medium">{p.label}</label>
+                        {previews[p.key] && <img src={previews[p.key]} alt={p.label} className="w-full h-32 object-cover rounded-md my-2"/>}
+                        <input type="file" name={p.key} accept="image/*" onChange={handlePhotoChange} className="w-full" />
+                    </div>
+                ))}
+            </div>
+            <CalibrationHistory history={calibrationHistory} setHistory={setCalibrationHistory} />
+            <div className="flex justify-end gap-4 pt-4">
+                <button type="button" onClick={onCancel} className="bg-gray-200 text-gray-800 font-bold py-2 px-4 rounded-lg">취소</button>
+                <button type="submit" disabled={isSubmitting} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg">{isSubmitting ? '저장 중...' : '저장'}</button>
+            </div>
+        </form>
+    );
+}
