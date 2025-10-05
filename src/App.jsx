@@ -29,6 +29,7 @@ import {
     uploadBytes, 
     getDownloadURL 
 } from 'firebase/storage';
+import logo from './assets/logo.png';
 
 // --- Firebase 설정 ---
 // VS Code로 이전 시, 이 정보를 .env 파일로 옮겨 보안을 강화하는 것을 권장합니다.
@@ -204,6 +205,7 @@ function LoginScreen({ initialError, onDemoLogin }) {
         <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
             <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 sm:p-8 space-y-6">
                 <div className="text-center">
+                    <img src={logo} alt="logo" className="mx-auto h-16 w-auto mb-4" />
                     <h1 className="text-3xl font-bold text-gray-800">RadAn-Net</h1>
                     <p className="text-gray-500">수산물 방사능 분석 관제 시스템</p>
                     <div className="mt-2 text-sm text-gray-400">By KoRA</div>
