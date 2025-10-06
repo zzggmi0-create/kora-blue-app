@@ -193,8 +193,8 @@ function LoginScreen({ initialError, onDemoLogin }) {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-100 to-indigo-200 flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6 border border-gray-200 transition-transform hover:scale-105">
+        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 sm:p-8 space-y-6">
                 <div className="text-center">
                     <img src={logo} alt="logo" className="mx-auto h-16 w-auto mb-4" />
                     <h1 className="text-3xl font-bold text-gray-800">수산물 방사능분석 플랫폼</h1>
@@ -490,7 +490,7 @@ function AnalysisSystemApp({ userData, setAppMode, onLogout }) {
         };
         switch (page) {
             case 'home': return <AnalysisHome {...props} />;
-            case 'analysis': return <AnalysisManagement {...props} initialStep="analysis" />;
+            case 'analysis': return <AnalysisManagement {...props} initialStep={null} />;
             case 'analysis_status': return <div>분석현황 페이지는 현재 개발 중입니다.</div>;
             case 'work': return <WorkLogPage {...props} />;
             default: return <AnalysisHome {...props} />;
@@ -498,6 +498,531 @@ function AnalysisSystemApp({ userData, setAppMode, onLogout }) {
     };
     
     return <AppShell pageTitle="RadAn-Flow" userData={userData} setAppMode={setAppMode} onLogout={onLogout} onNavClick={setPage} currentPage={page}>{renderPage()}</AppShell>;
+}
+
+function UserManagement() {
+    const [users, setUsers] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState(null);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, `/artifacts/${appId}/public/data/users`), (snapshot) => {
+            const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setUsers(usersData);
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const handleAddUser = () => {
+        setEditingUser(null);
+        setIsModalOpen(true);
+    };
+
+    const handleEditUser = (user) => {
+        setEditingUser(user);
+        setIsModalOpen(true);
+    };
+
+    const handleDeleteUser = async (userId) => {
+        if (window.confirm('정말로 이 사용자를 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.')) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/users`, userId));
+                // Note: This does not delete the user from Firebase Authentication.
+                // A cloud function would be required to do that safely.
+            } catch (error) {
+                console.error("Error deleting user: ", error);
+                alert('사용자 삭제에 실패했습니다.');
+            }
+        }
+    };
+
+    const filteredUsers = users.filter(user =>
+        user.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        user.organization?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h2 className="text-2xl font-bold mb-4">회원관리</h2>
+            <div className="flex justify-between mb-4">
+                <input
+                    type="text"
+                    placeholder="이름, 이메일, 소속으로 검색..."
+                    className="p-2 border rounded-md w-1/3"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                <button onClick={handleAddUser} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
+                    회원 추가
+                </button>
+            </div>
+            {isLoading ? <p>로딩 중...</p> : (
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">이메일</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">소속</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">직책</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">자격</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {filteredUsers.map(user => (
+                                <tr key={user.id}>
+                                    <td className="px-4 py-2 whitespace-nowrap">{user.name}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{user.email}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{user.organization}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{user.position}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{user.qualificationLevel}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">
+                                        <button onClick={() => handleEditUser(user)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
+                                        <button onClick={() => handleDeleteUser(user.id)} className="text-red-600 hover:text-red-900">삭제</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            {isModalOpen && <UserEditModal user={editingUser} onClose={() => setIsModalOpen(false)} />}
+        </div>
+    );
+}
+
+function UserEditModal({ user, onClose }) {
+    const [formData, setFormData] = useState({
+        name: user?.name || '',
+        email: user?.email || '',
+        organization: user?.organization || '',
+        position: user?.position || '',
+        qualificationLevel: user?.qualificationLevel || '분석원',
+        contact: user?.contact || '',
+        inspectionOffice: user?.inspectionOffice || [],
+    });
+    const [password, setPassword] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState('');
+    const qualificationLevels = ['최고관리자', '시료채취원', '분석원', '분석보조원', '기술책임자', '해수부(1)', '해수부(2)', '협회관리자'];
+    const [offices, setOffices] = useState([]);
+
+    useEffect(() => {
+        const fetchOffices = async () => {
+            const officesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`));
+            setOffices(officesSnapshot.docs.map(doc => doc.data().name));
+        };
+        fetchOffices();
+    }, []);
+
+    const handleOfficeChange = (officeName) => {
+        setFormData(prev => {
+            const newOffices = prev.inspectionOffice.includes(officeName)
+                ? prev.inspectionOffice.filter(o => o !== officeName)
+                : [...prev.inspectionOffice, officeName];
+            return { ...prev, inspectionOffice: newOffices };
+        });
+    };
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setIsSubmitting(true);
+
+        try {
+            if (user) { // Editing existing user
+                const userRef = doc(db, `/artifacts/${appId}/public/data/users`, user.id);
+                await updateDoc(userRef, formData);
+            } else { // Creating new user
+                if (!password) {
+                    setError('새로운 회원을 추가하려면 비밀번호를 입력해야 합니다.');
+                    setIsSubmitting(false);
+                    return;
+                }
+                const userCredential = await createUserWithEmailAndPassword(auth, formData.email, password);
+                const newUser = { ...formData, uid: userCredential.user.uid };
+                await setDoc(doc(db, `/artifacts/${appId}/public/data/users`, userCredential.user.uid), newUser);
+            }
+            onClose();
+        } catch (err) {
+            setError(err.message);
+            console.error(err);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+                <h2 className="text-xl font-bold mb-6">{user ? '회원 정보 수정' : '새 회원 추가'}</h2>
+                {error && <p className="text-red-500 mb-4">{error}</p>}
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="이름" required className="w-full p-2 border rounded-md" />
+                    <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="이메일" required className="w-full p-2 border rounded-md" disabled={!!user} />
+                    {!user && <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" required className="w-full p-2 border rounded-md" />}
+                    <input type="text" name="organization" value={formData.organization} onChange={handleChange} placeholder="소속" className="w-full p-2 border rounded-md" />
+                    <input type="text" name="position" value={formData.position} onChange={handleChange} placeholder="직책" className="w-full p-2 border rounded-md" />
+                    <input type="text" name="contact" value={formData.contact} onChange={handleChange} placeholder="연락처" className="w-full p-2 border rounded-md" />
+                    <select name="qualificationLevel" value={formData.qualificationLevel} onChange={handleChange} className="w-full p-2 border rounded-md">
+                        {qualificationLevels.map(level => <option key={level} value={level}>{level}</option>)}
+                    </select>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">검사소</label>
+                        <div className="mt-2 grid grid-cols-3 gap-2">
+                            {offices.map(officeName => (
+                                <label key={officeName} className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.inspectionOffice.includes(officeName)}
+                                        onChange={() => handleOfficeChange(officeName)}
+                                        className="h-4 w-4 text-indigo-600 border-gray-300 rounded"
+                                    />
+                                    <span className="ml-2 text-sm text-gray-700">{officeName}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
+                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md">{isSubmitting ? '저장 중...' : '저장'}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+                <h2 className="text-xl font-bold mb-6">{user ? '회원 정보 수정' : '새 회원 추가'}</h2>
+                {error && <p className="text-red-500 mb-4">{error}</p>}
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="이름" required className="w-full p-2 border rounded-md" />
+                    <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="이메일" required className="w-full p-2 border rounded-md" disabled={!!user} />
+                    {!user && <input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="비밀번호" required className="w-full p-2 border rounded-md" />}
+                    <input type="text" name="organization" value={formData.organization} onChange={handleChange} placeholder="소속" className="w-full p-2 border rounded-md" />
+                    <input type="text" name="position" value={formData.position} onChange={handleChange} placeholder="직책" className="w-full p-2 border rounded-md" />
+                    <input type="text" name="contact" value={formData.contact} onChange={handleChange} placeholder="연락처" className="w-full p-2 border rounded-md" />
+                    <select name="qualificationLevel" value={formData.qualificationLevel} onChange={handleChange} className="w-full p-2 border rounded-md">
+                        {qualificationLevels.map(level => <option key={level} value={level}>{level}</option>)}
+                    </select>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">검사소</label>
+                        <div className="mt-2 grid grid-cols-3 gap-2">
+                            {offices.map(officeName => (
+                                <label key={officeName} className="flex items-center">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.inspectionOffice.includes(officeName)}
+                                        onChange={() => handleOfficeChange(officeName)}
+                                        className="h-4 w-4 text-indigo-600 border-gray-300 rounded"
+                                    />
+                                    <span className="ml-2 text-sm text-gray-700">{officeName}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
+                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md">{isSubmitting ? '저장 중...' : '저장'}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function EquipmentManagement() {
+    const [equipment, setEquipment] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingEquipment, setEditingEquipment] = useState(null);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, `/artifacts/${appId}/public/data/equipment`), (snapshot) => {
+            const equipmentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setEquipment(equipmentData);
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const handleAddEquipment = () => {
+        setEditingEquipment(null);
+        setIsModalOpen(true);
+    };
+
+    const handleEditEquipment = (item) => {
+        setEditingEquipment(item);
+        setIsModalOpen(true);
+    };
+
+    const handleDeleteEquipment = async (equipmentId) => {
+        if (window.confirm('정말로 이 장비를 삭제하시겠습니까?')) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/equipment`, equipmentId));
+            } catch (error) {
+                console.error("Error deleting equipment: ", error);
+                alert('장비 삭제에 실패했습니다.');
+            }
+        }
+    };
+
+    const filteredEquipment = equipment.filter(item =>
+        item.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        item.inspectionOffice?.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h2 className="text-2xl font-bold mb-4">장비 이력 관리</h2>
+            <div className="flex justify-between mb-4">
+                <input
+                    type="text"
+                    placeholder="장비명, 모델, 검사소로 검색..."
+                    className="p-2 border rounded-md w-1/3"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                />
+                <button onClick={handleAddEquipment} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
+                    장비 추가
+                </button>
+            </div>
+            {isLoading ? <p>로딩 중...</p> : (
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">장비명</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">모델</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">검사소</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">상태</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {filteredEquipment.map(item => (
+                                <tr key={item.id}>
+                                    <td className="px-4 py-2 whitespace-nowrap">{item.name}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{item.model}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{item.inspectionOffice}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{item.status}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">
+                                        <button onClick={() => handleEditEquipment(item)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
+                                        <button onClick={() => handleDeleteEquipment(item.id)} className="text-red-600 hover:text-red-900">삭제</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            {isModalOpen && <EquipmentEditModal equipment={editingEquipment} onClose={() => setIsModalOpen(false)} />}
+        </div>
+    );
+}
+
+function EquipmentEditModal({ equipment, onClose }) {
+    const [formData, setFormData] = useState({
+        name: equipment?.name || '',
+        model: equipment?.model || '',
+        serialNumber: equipment?.serialNumber || '',
+        inspectionOffice: equipment?.inspectionOffice || '',
+        purchaseDate: equipment?.purchaseDate || '',
+        status: equipment?.status || 'Active',
+    });
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setIsSubmitting(true);
+
+        try {
+            if (equipment) {
+                const equipRef = doc(db, `/artifacts/${appId}/public/data/equipment`, equipment.id);
+                await updateDoc(equipRef, formData);
+            } else {
+                await addDoc(collection(db, `/artifacts/${appId}/public/data/equipment`), formData);
+            }
+            onClose();
+        } catch (err) {
+            setError(err.message);
+            console.error(err);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+                <h2 className="text-xl font-bold mb-6">{equipment ? '장비 정보 수정' : '새 장비 추가'}</h2>
+                {error && <p className="text-red-500 mb-4">{error}</p>}
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input type="text" name="name" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="장비명" required className="w-full p-2 border rounded-md" />
+                    <input type="text" name="model" value={formData.model} onChange={(e) => setFormData({...formData, model: e.target.value})} placeholder="모델명" className="w-full p-2 border rounded-md" />
+                    <input type="text" name="serialNumber" value={formData.serialNumber} onChange={(e) => setFormData({...formData, serialNumber: e.target.value})} placeholder="시리얼 번호" className="w-full p-2 border rounded-md" />
+                    <input type="text" name="inspectionOffice" value={formData.inspectionOffice} onChange={(e) => setFormData({...formData, inspectionOffice: e.target.value})} placeholder="검사소" className="w-full p-2 border rounded-md" />
+                    <input type="date" name="purchaseDate" value={formData.purchaseDate} onChange={(e) => setFormData({...formData, purchaseDate: e.target.value})} placeholder="구입일" className="w-full p-2 border rounded-md" />
+                    <select name="status" value={formData.status} onChange={(e) => setFormData({...formData, status: e.target.value})} className="w-full p-2 border rounded-md">
+                        <option value="Active">활성</option>
+                        <option value="Maintenance">유지보수</option>
+                        <option value="Retired">폐기</option>
+                    </select>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
+                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md">{isSubmitting ? '저장 중...' : '저장'}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function AnalysisAgencyManagement() {
+    return <div className="bg-white p-6 rounded-lg shadow-lg">분석기관관리 기능은 현재 개발 중입니다.</div>;
+}
+
+function InspectionOfficeManagement() {
+    const [offices, setOffices] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingOffice, setEditingOffice] = useState(null);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collection(db, `/artifacts/${appId}/public/data/inspection_offices`), (snapshot) => {
+            const officesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setOffices(officesData);
+            setIsLoading(false);
+        });
+        return () => unsubscribe();
+    }, []);
+
+    const handleAddOffice = () => {
+        setEditingOffice(null);
+        setIsModalOpen(true);
+    };
+
+    const handleEditOffice = (office) => {
+        setEditingOffice(office);
+        setIsModalOpen(true);
+    };
+
+    const handleDeleteOffice = async (officeId) => {
+        if (window.confirm('정말로 이 검사소를 삭제하시겠습니까?')) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/inspection_offices`, officeId));
+            } catch (error) {
+                console.error("Error deleting office: ", error);
+                alert('검사소 삭제에 실패했습니다.');
+            }
+        }
+    };
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-lg">
+            <h2 className="text-2xl font-bold mb-4">검사소 관리</h2>
+            <div className="flex justify-end mb-4">
+                <button onClick={handleAddOffice} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
+                    검사소 추가
+                </button>
+            </div>
+            {isLoading ? <p>로딩 중...</p> : (
+                <div className="overflow-x-auto">
+                    <table className="min-w-full divide-y divide-gray-200">
+                        <thead className="bg-gray-50">
+                            <tr>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">검사소명</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">연락처</th>
+                                <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
+                            </tr>
+                        </thead>
+                        <tbody className="bg-white divide-y divide-gray-200">
+                            {offices.map(office => (
+                                <tr key={office.id}>
+                                    <td className="px-4 py-2 whitespace-nowrap">{office.name}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{office.address}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">{office.contact}</td>
+                                    <td className="px-4 py-2 whitespace-nowrap">
+                                        <button onClick={() => handleEditOffice(office)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
+                                        <button onClick={() => handleDeleteOffice(office.id)} className="text-red-600 hover:text-red-900">삭제</button>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            )}
+            {isModalOpen && <InspectionOfficeEditModal office={editingOffice} onClose={() => setIsModalOpen(false)} />}
+        </div>
+    );
+}
+
+function InspectionOfficeEditModal({ office, onClose }) {
+    const [formData, setFormData] = useState({
+        name: office?.name || '',
+        address: office?.address || '',
+        contact: office?.contact || '',
+        coordinates: office?.coordinates || '',
+    });
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [error, setError] = useState('');
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setError('');
+        setIsSubmitting(true);
+
+        try {
+            if (office) {
+                const officeRef = doc(db, `/artifacts/${appId}/public/data/inspection_offices`, office.id);
+                await updateDoc(officeRef, formData);
+            } else {
+                await addDoc(collection(db, `/artifacts/${appId}/public/data/inspection_offices`), formData);
+            }
+            onClose();
+        } catch (err) {
+            setError(err.message);
+            console.error(err);
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+                <h2 className="text-xl font-bold mb-6">{office ? '검사소 정보 수정' : '새 검사소 추가'}</h2>
+                {error && <p className="text-red-500 mb-4">{error}</p>}
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input type="text" name="name" value={formData.name} onChange={(e) => setFormData({...formData, name: e.target.value})} placeholder="검사소명" required className="w-full p-2 border rounded-md" />
+                    <input type="text" name="address" value={formData.address} onChange={(e) => setFormData({...formData, address: e.target.value})} placeholder="주소" className="w-full p-2 border rounded-md" />
+                    <input type="text" name="contact" value={formData.contact} onChange={(e) => setFormData({...formData, contact: e.target.value})} placeholder="연락처" className="w-full p-2 border rounded-md" />
+                    <input type="text" name="coordinates" value={formData.coordinates} onChange={(e) => setFormData({...formData, coordinates: e.target.value})} placeholder="좌표 (e.g., 37.5665, 126.9780)" className="w-full p-2 border rounded-md" />
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
+                        <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md">{isSubmitting ? '저장 중...' : '저장'}</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
 }
 
 function ControlSystemApp({ userData, setAppMode, onLogout }) {
@@ -877,31 +1402,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
     const [dashboardData, setDashboardData] = useState({
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -909,31 +1410,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
         receiptCount: 0,
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -941,31 +1418,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
         doneCount: 0,
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -973,31 +1426,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
     });
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1005,31 +1434,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
     const [samples, setSamples] = useState([]);
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1037,49 +1442,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
     const [error, setError] = useState('');
-
-
-
-    const [workingNowCount, setWorkingNowCount] = useState(0);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1089,31 +1452,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
         const fetchData = async () => {
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1121,31 +1460,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-                const [samplesSnapshot, officesSnapshot, worklogsSnapshot] = await Promise.all([
-
-
-
-
-
-
-
-
-
-
-
-
+                const [samplesSnapshot, officesSnapshot] = await Promise.all([
 
 
 
@@ -1153,35 +1468,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-                    getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`)),
-
-
-
-                    getDocs(collection(db, `/artifacts/${appId}/public/data/worklogs`))
-
-
-
-
-
-
-
-
-
-
-
-
+                    getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`))
 
 
 
@@ -1191,119 +1478,9 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                 const allSamples = samplesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
                 const allOffices = officesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-
-
-                const allWorklogs = worklogsSnapshot.docs.map(doc => doc.data());
-
-
-
-
-
-
-
-                const latestLogs = allWorklogs.reduce((acc, log) => {
-
-
-
-                    if (!acc[log.userId] || acc[log.userId].timestamp.toDate() < log.timestamp.toDate()) {
-
-
-
-                        acc[log.userId] = log;
-
-
-
-                    }
-
-
-
-                    return acc;
-
-
-
-                }, {});
-
-
-
-
-
-
-
-                const workingNowCount = Object.values(latestLogs).filter(log => log.type === '출근').length;
-
-
-
-                setWorkingNowCount(workingNowCount);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1313,45 +1490,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                 setOffices(allOffices);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1361,31 +1500,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                     totalSamples: allSamples.length,
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1393,31 +1508,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                     receivedCount: allSamples.filter(s => s.status === 'prep_wait').length,
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1425,31 +1516,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                     totalOffices: allOffices.length,
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1459,45 +1526,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
             } catch (err) {
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1505,31 +1534,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                 setError("데이터를 불러오는 데 실패했습니다.");
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1537,31 +1542,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                 setLoading(false);
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1569,47 +1550,11 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
         };
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
         fetchData();
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1619,45 +1564,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     if (loading) return <div className="text-center p-6">대시보드 데이터를 불러오는 중...</div>;
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1667,45 +1574,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     const stats = [
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1713,31 +1582,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
         { label: '시료접수', value: dashboardData.receiptCount, color: 'bg-yellow-500' },
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1745,31 +1590,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
         { label: '분석완료', value: dashboardData.doneCount, color: 'bg-green-500' },
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1779,45 +1600,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     return (
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1825,31 +1608,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
             <div>
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1857,61 +1616,11 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                 <p className="text-gray-600">안녕하세요, {userData.name}님! 현재 시스템 현황입니다.</p>
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
             </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1921,31 +1630,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                 {stats.map(stat => (
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1953,31 +1638,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                         <p className="text-lg">{stat.label}</p>
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -1985,31 +1646,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                     </div>
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2017,57 +1654,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
             </div>
-
-
-
-
-
-
-
-            <div className="bg-teal-500 p-6 rounded-lg text-white shadow-lg">
-
-
-
-                <p className="text-lg">근무중인 인원</p>
-
-
-
-                <p className="text-4xl font-bold">{workingNowCount}</p>
-
-
-
-            </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2077,31 +1664,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                 <h3 className="text-xl font-bold mb-4">검사소 현황 (총 {dashboardData.totalOffices}개소)</h3>
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2109,31 +1672,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                     <GisMap offices={offices} samples={samples} />
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2141,45 +1680,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
             </div>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2189,31 +1690,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                 <div className="lg:col-span-1">
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2221,31 +1698,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                 </div>
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2253,31 +1706,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
                     <DashboardEmergencyContacts />
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2285,31 +1714,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
             </div>
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2317,31 +1722,7 @@ function ControlDashboard({ userData }) {
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
     );
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
@@ -2446,702 +1827,6 @@ function ProgressStatus() {
                         ))}
                     </tbody>
                 </table>
-            </div>
-        </div>
-    );
-}
-function InspectionOfficeManagement() {
-    const [offices, setOffices] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingOffice, setEditingOffice] = useState(null);
-    const [isCreating, setIsCreating] = useState(false);
-
-    const collectionRef = collection(db, `/artifacts/${appId}/public/data/inspection_offices`);
-
-    useEffect(() => {
-        const unsubscribe = onSnapshot(collectionRef, 
-            (snapshot) => {
-                const officesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setOffices(officesData);
-                setIsLoading(false);
-            }, 
-            (err) => {
-                console.error("Failed to fetch offices:", err);
-                setError('검사소 정보를 불러오는 데 실패했습니다.');
-                setIsLoading(false);
-            }
-        );
-        return () => unsubscribe();
-    }, []);
-
-    const handleCreate = () => {
-        setIsCreating(true);
-        setEditingOffice({ name: '', address: '', contact: '', coordinates: '' });
-        setIsModalOpen(true);
-    };
-
-    const handleEdit = (office) => {
-        setIsCreating(false);
-        setEditingOffice(office);
-        setIsModalOpen(true);
-    };
-
-    const handleSave = async (officeData) => {
-        try {
-            if (isCreating) {
-                await addDoc(collectionRef, officeData);
-            } else {
-                const officeRef = doc(collectionRef, editingOffice.id);
-                await updateDoc(officeRef, officeData);
-            }
-            setIsModalOpen(false);
-            setEditingOffice(null);
-        } catch (err) {
-            console.error("Failed to save office:", err);
-            setError('검사소 정보 저장에 실패했습니다.');
-        }
-    };
-
-    const handleDelete = async (id) => {
-        if (window.confirm('정말로 이 검사소를 삭제하시겠습니까?')) {
-            try {
-                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/inspection_offices`, id));
-            } catch (err) {
-                console.error("Failed to delete office:", err);
-                setError('검사소 삭제에 실패했습니다.');
-            }
-        }
-    };
-
-    if (isLoading) return <div className="text-center">검사소 정보를 불러오는 중...</div>;
-    if (error) return <div className="text-center text-red-500">{error}</div>;
-
-    return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold">검사소 관리</h2>
-                <button onClick={handleCreate} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
-                    신규 검사소 추가
-                </button>
-            </div>
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">검사소명</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">연락처</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">좌표</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {offices.map(office => (
-                            <tr key={office.id}>
-                                <td className="px-4 py-2 whitespace-nowrap">{office.name}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">{office.address}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">{office.contact}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">{office.coordinates}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">
-                                    <button onClick={() => handleEdit(office)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
-                                    <button onClick={() => handleDelete(office.id)} className="text-red-600 hover:text-red-900">삭제</button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-            {isModalOpen && (
-                <OfficeEditModal
-                    office={editingOffice}
-                    onSave={handleSave}
-                    onClose={() => setIsModalOpen(false)}
-                    isCreating={isCreating}
-                />
-            )}
-        </div>
-    );
-}
-
-function OfficeEditModal({ office, onSave, onClose, isCreating }) {
-    const [formData, setFormData] = useState(office);
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSave(formData);
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
-                <h2 className="text-xl font-bold mb-6">{isCreating ? '신규 검사소 추가' : '검사소 정보 수정'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="검사소명" className="w-full p-2 border rounded"/>
-                    <input type="text" name="address" value={formData.address} onChange={handleChange} placeholder="주소" className="w-full p-2 border rounded"/>
-                    <input type="text" name="contact" value={formData.contact} onChange={handleChange} placeholder="연락처" className="w-full p-2 border rounded"/>
-                    <input type="text" name="coordinates" value={formData.coordinates} onChange={handleChange} placeholder="좌표 (e.g., 37.5665, 126.9780)" className="w-full p-2 border rounded"/>
-                    <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">저장</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-function AnalysisAgencyManagement() {
-    const [agencies, setAgencies] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingAgency, setEditingAgency] = useState(null);
-    const [isCreating, setIsCreating] = useState(false);
-
-    const collectionRef = collection(db, `/artifacts/${appId}/public/data/analysis_agencies`);
-
-    useEffect(() => {
-        const unsubscribe = onSnapshot(collectionRef, 
-            (snapshot) => {
-                const agenciesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setAgencies(agenciesData);
-                setIsLoading(false);
-            }, 
-            (err) => {
-                console.error("Failed to fetch agencies:", err);
-                setError('분석기관 정보를 불러오는 데 실패했습니다.');
-                setIsLoading(false);
-            }
-        );
-        return () => unsubscribe();
-    }, []);
-
-    const handleCreate = () => {
-        setIsCreating(true);
-        setEditingAgency({ name: '', contact: '' });
-        setIsModalOpen(true);
-    };
-
-    const handleEdit = (agency) => {
-        setIsCreating(false);
-        setEditingAgency(agency);
-        setIsModalOpen(true);
-    };
-
-    const handleSave = async (agencyData) => {
-        try {
-            if (isCreating) {
-                await addDoc(collectionRef, agencyData);
-            } else {
-                const agencyRef = doc(collectionRef, editingAgency.id);
-                await updateDoc(agencyRef, agencyData);
-            }
-            setIsModalOpen(false);
-            setEditingAgency(null);
-        } catch (err) {
-            console.error("Failed to save agency:", err);
-            setError('분석기관 정보 저장에 실패했습니다.');
-        }
-    };
-
-    const handleDelete = async (id) => {
-        if (window.confirm('정말로 이 분석기관을 삭제하시겠습니까?')) {
-            try {
-                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/analysis_agencies`, id));
-            } catch (err) {
-                console.error("Failed to delete agency:", err);
-                setError('분석기관 삭제에 실패했습니다.');
-            }
-        }
-    };
-
-    if (isLoading) return <div className="text-center">분석기관 정보를 불러오는 중...</div>;
-    if (error) return <div className="text-center text-red-500">{error}</div>;
-
-    return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold">분석기관 관리</h2>
-                <button onClick={handleCreate} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
-                    신규 분석기관 추가
-                </button>
-            </div>
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">분석기관명</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">연락처</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {agencies.map(agency => (
-                            <tr key={agency.id}>
-                                <td className="px-4 py-2 whitespace-nowrap">{agency.name}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">{agency.contact}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">
-                                    <button onClick={() => handleEdit(agency)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
-                                    <button onClick={() => handleDelete(agency.id)} className="text-red-600 hover:text-red-900">삭제</button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-            {isModalOpen && (
-                <AgencyEditModal
-                    agency={editingAgency}
-                    onSave={handleSave}
-                    onClose={() => setIsModalOpen(false)}
-                    isCreating={isCreating}
-                />
-            )}
-        </div>
-    );
-}
-
-function AgencyEditModal({ agency, onSave, onClose, isCreating }) {
-    const [formData, setFormData] = useState(agency);
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSave(formData);
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
-                <h2 className="text-xl font-bold mb-6">{isCreating ? '신규 분석기관 추가' : '분석기관 정보 수정'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="분석기관명" className="w-full p-2 border rounded"/>
-                    <input type="text" name="contact" value={formData.contact} onChange={handleChange} placeholder="연락처" className="w-full p-2 border rounded"/>
-                    <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">저장</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-function EquipmentManagement() {
-    const [equipment, setEquipment] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingEquipment, setEditingEquipment] = useState(null);
-    const [isCreating, setIsCreating] = useState(false);
-
-    const collectionRef = collection(db, `/artifacts/${appId}/public/data/equipment`);
-
-    useEffect(() => {
-        const unsubscribe = onSnapshot(collectionRef, 
-            (snapshot) => {
-                const equipmentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setEquipment(equipmentData);
-                setIsLoading(false);
-            }, 
-            (err) => {
-                console.error("Failed to fetch equipment:", err);
-                setError('장비 정보를 불러오는 데 실패했습니다.');
-                setIsLoading(false);
-            }
-        );
-        return () => unsubscribe();
-    }, []);
-
-    const handleCreate = () => {
-        setIsCreating(true);
-        setEditingEquipment({ code: '', type: '', model: '', manufacturer: '', purchaseDate: '' });
-        setIsModalOpen(true);
-    };
-
-    const handleEdit = (item) => {
-        setIsCreating(false);
-        setEditingEquipment(item);
-        setIsModalOpen(true);
-    };
-
-    const handleSave = async (equipmentData) => {
-        try {
-            if (isCreating) {
-                await addDoc(collectionRef, equipmentData);
-            } else {
-                const equipmentRef = doc(collectionRef, editingEquipment.id);
-                await updateDoc(equipmentRef, equipmentData);
-            }
-            setIsModalOpen(false);
-            setEditingEquipment(null);
-        } catch (err) {
-            console.error("Failed to save equipment:", err);
-            setError('장비 정보 저장에 실패했습니다.');
-        }
-    };
-
-    const handleDelete = async (id) => {
-        if (window.confirm('정말로 이 장비를 삭제하시겠습니까?')) {
-            try {
-                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/equipment`, id));
-            } catch (err) {
-                console.error("Failed to delete equipment:", err);
-                setError('장비 삭제에 실패했습니다.');
-            }
-        }
-    };
-
-    if (isLoading) return <div className="text-center">장비 정보를 불러오는 중...</div>;
-    if (error) return <div className="text-center text-red-500">{error}</div>;
-
-    return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold">장비이력 관리</h2>
-                <button onClick={handleCreate} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
-                    신규 장비 추가
-                </button>
-            </div>
-            <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                    <thead className="bg-gray-50">
-                        <tr>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">장비코드</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">장비유형</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">모델</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">제조사</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">구매일</th>
-                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
-                        </tr>
-                    </thead>
-                    <tbody className="bg-white divide-y divide-gray-200">
-                        {equipment.map(item => (
-                            <tr key={item.id}>
-                                <td className="px-4 py-2 whitespace-nowrap">{item.code}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">{item.type}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">{item.model}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">{item.manufacturer}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">{item.purchaseDate}</td>
-                                <td className="px-4 py-2 whitespace-nowrap">
-                                    <button onClick={() => handleEdit(item)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
-                                    <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">삭제</button>
-                                </td>
-                            </tr>
-                        ))}
-                    </tbody>
-                </table>
-            </div>
-            {isModalOpen && (
-                <EquipmentEditModal
-                    equipment={editingEquipment}
-                    onSave={handleSave}
-                    onClose={() => setIsModalOpen(false)}
-                    isCreating={isCreating}
-                />
-            )}
-        </div>
-    );
-}
-
-function EquipmentEditModal({ equipment, onSave, onClose, isCreating }) {
-    const [formData, setFormData] = useState(equipment);
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSave(formData);
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
-                <h2 className="text-xl font-bold mb-6">{isCreating ? '신규 장비 추가' : '장비 정보 수정'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    <input type="text" name="code" value={formData.code} onChange={handleChange} placeholder="장비코드" className="w-full p-2 border rounded"/>
-                    <input type="text" name="type" value={formData.type} onChange={handleChange} placeholder="장비유형" className="w-full p-2 border rounded"/>
-                    <input type="text" name="model" value={formData.model} onChange={handleChange} placeholder="모델" className="w-full p-2 border rounded"/>
-                    <input type="text" name="manufacturer" value={formData.manufacturer} onChange={handleChange} placeholder="제조사" className="w-full p-2 border rounded"/>
-                    <input type="date" name="purchaseDate" value={formData.purchaseDate} onChange={handleChange} placeholder="구매일" className="w-full p-2 border rounded"/>
-                    <div className="flex justify-end gap-4 pt-4">
-                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">저장</button>
-                    </div>
-                </form>
-            </div>
-        </div>
-    );
-}
-
-function UserTable({ users, onEdit, onDelete }) {
-    return (
-        <div className="overflow-x-auto">
-            <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-50">
-                    <tr>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">이메일</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">기관</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">직급</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">권한</th>
-                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
-                    </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-200">
-                    {users.map(user => (
-                        <tr key={user.id}>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{user.name}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{user.email}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{user.organization}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{user.position}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{user.qualificationLevel}</td>
-                            <td className="px-4 py-2 whitespace-nowrap text-sm font-medium">
-                                <button onClick={() => onEdit(user)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
-                                <button onClick={() => onDelete(user.id)} className="text-red-600 hover:text-red-900">삭제</button>
-                            </td>
-                        </tr>
-                    ))}
-                </tbody>
-            </table>
-        </div>
-    );
-}
-
-function UserManagement() {
-    const [users, setUsers] = useState([]);
-    const [isLoading, setIsLoading] = useState(true);
-    const [error, setError] = useState('');
-    const [isModalOpen, setIsModalOpen] = useState(false);
-    const [editingUser, setEditingUser] = useState(null);
-    const [searchTerm, setSearchTerm] = useState('');
-    const [isCreatingUser, setIsCreatingUser] = useState(false);
-
-    const collectionRef = collection(db, `/artifacts/${appId}/public/data/users`);
-
-    useEffect(() => {
-        const unsubscribe = onSnapshot(collectionRef, 
-            (snapshot) => {
-                const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-                setUsers(usersData);
-                setIsLoading(false);
-            }, 
-            (err) => {
-                console.error("Failed to fetch users:", err);
-                setError('사용자 정보를 불러오는 데 실패했습니다.');
-                setIsLoading(false);
-            }
-        );
-        return () => unsubscribe();
-    }, [collectionRef]);
-
-    const handleCreateUser = () => {
-        setIsCreatingUser(true);
-        setEditingUser({
-            name: '',
-            email: '',
-            organization: '',
-            position: '',
-            qualificationLevel: '시료채취원',
-            contact: '',
-            inspectionOffice: [],
-            finalEducation: '',
-            major: '',
-            analysisAgencies: [],
-            trainingHistory: [],
-            workExperience: [],
-        });
-        setIsModalOpen(true);
-    };
-    
-    const handleEditUser = (user) => {
-        setIsCreatingUser(false);
-        setEditingUser(user);
-        setIsModalOpen(true);
-    };
-
-    const handleSaveUser = async (userData) => {
-        try {
-            if (isCreatingUser) {
-                const newUserRef = doc(collectionRef);
-                await setDoc(newUserRef, { ...userData, uid: newUserRef.id });
-
-            } else {
-                const userRef = doc(collectionRef, editingUser.id);
-                await updateDoc(userRef, userData);
-            }
-            setIsModalOpen(false);
-            setEditingUser(null);
-        } catch (err) {
-            console.error("Failed to save user:", err);
-            setError('사용자 정보 저장에 실패했습니다.');
-        }
-    };
-
-    const handleDeleteUser = async (userId) => {
-        if (window.confirm('정말로 이 사용자를 삭제하시겠습니까?')) {
-            try {
-                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/users`, userId));
-            } catch (err) {
-                console.error("Failed to delete user:", err);
-                setError('사용자 삭제에 실패했습니다.');
-            }
-        }
-    };
-
-    const filteredUsers = users.filter(user =>
-        Object.values(user).some(value =>
-            String(value).toLowerCase().includes(searchTerm.toLowerCase())
-        )
-    );
-
-    if (isLoading) return <div className="text-center">사용자 정보를 불러오는 중...</div>;
-    if (error) return <div className="text-center text-red-500">{error}</div>;
-
-    return (
-        <div className="bg-white p-6 rounded-lg shadow-md">
-            <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold">회원관리</h2>
-                <button onClick={handleCreateUser} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
-                    신규 회원 생성
-                </button>
-            </div>
-            <input
-                type="text"
-                placeholder="검색..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full p-2 border rounded-md mb-4"
-            />
-            <UserTable users={filteredUsers} onEdit={handleEditUser} onDelete={handleDeleteUser} />
-            {isModalOpen && (
-                <UserEditModal
-                    user={editingUser}
-                    onSave={handleSaveUser}
-                    onClose={() => setIsModalOpen(false)}
-                    isCreating={isCreatingUser}
-                />
-            )}
-        </div>
-    );
-}
-
-function UserEditModal({ user, onSave, onClose, isCreating }) {
-    const [formData, setFormData] = useState(user);
-    const [allOffices, setAllOffices] = useState([]);
-    const [allAgencies, setAllAgencies] = useState([]);
-
-    useEffect(() => {
-        const fetchOffices = async () => {
-            const officesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`));
-            setAllOffices(officesSnapshot.docs.map(doc => doc.data().name));
-        };
-        const fetchAgencies = async () => {
-            const agenciesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/analysis_agencies`));
-            setAllAgencies(agenciesSnapshot.docs.map(doc => doc.data().name));
-        };
-        fetchOffices();
-        fetchAgencies();
-    }, []);
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleOfficeChange = (officeName) => {
-        setFormData(prev => {
-            const newOffices = prev.inspectionOffice.includes(officeName)
-                ? prev.inspectionOffice.filter(o => o !== officeName)
-                : [...prev.inspectionOffice, officeName];
-            return { ...prev, inspectionOffice: newOffices };
-        });
-    };
-
-    const handleAgencyChange = (agencyName) => {
-        setFormData(prev => {
-            const newAgencies = prev.analysisAgencies.includes(agencyName)
-                ? prev.analysisAgencies.filter(a => a !== agencyName)
-                : [...prev.analysisAgencies, agencyName];
-            return { ...prev, analysisAgencies: newAgencies };
-        });
-    };
-
-    const handleSubmit = (e) => {
-        e.preventDefault();
-        onSave(formData);
-    };
-
-    return (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-                <h2 className="text-xl font-bold mb-6">{isCreating ? '신규 회원 생성' : '회원 정보 수정'}</h2>
-                <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* Form fields */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="이름" className="p-2 border rounded"/>
-                        <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="이메일" className="p-2 border rounded" disabled={!isCreating}/>
-                        <input type="text" name="organization" value={formData.organization} onChange={handleChange} placeholder="기관" className="p-2 border rounded"/>
-                        <input type="text" name="position" value={formData.position} onChange={handleChange} placeholder="직급" className="p-2 border rounded"/>
-                        <input type="text" name="contact" value={formData.contact} onChange={handleChange} placeholder="연락처" className="p-2 border rounded"/>
-                        <select name="qualificationLevel" value={formData.qualificationLevel} onChange={handleChange} className="p-2 border rounded">
-                            {['시료채취원', '분석원', '분석보조원', '기술책임자', '해수부(1)', '해수부(2)', '협회관리자', '최고관리자'].map(r => <option key={r} value={r}>{r}</option>)}
-                        </select>
-                        <input type="text" name="finalEducation" value={formData.finalEducation} onChange={handleChange} placeholder="최종학력" className="p-2 border rounded"/>
-                        <input type="text" name="major" value={formData.major} onChange={handleChange} placeholder="전공" className="p-2 border rounded"/>
-                    </div>
-                    
-                    {/* Analysis Agencies Checkboxes */}
-                    <div className="mt-4">
-                        <h3 className="font-semibold mb-2">담당 분석기관</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                            {allAgencies.map(agency => (
-                                <label key={agency} className="flex items-center space-x-2">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.analysisAgencies.includes(agency)}
-                                        onChange={() => handleAgencyChange(agency)}
-                                    />
-                                    <span>{agency}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    {/* Inspection Offices Checkboxes */}
-                    <div className="mt-4">
-                        <h3 className="font-semibold mb-2">담당 검사소</h3>
-                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-                            {allOffices.map(office => (
-                                <label key={office} className="flex items-center space-x-2">
-                                    <input
-                                        type="checkbox"
-                                        checked={formData.inspectionOffice.includes(office)}
-                                        onChange={() => handleOfficeChange(office)}
-                                    />
-                                    <span>{office}</span>
-                                </label>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="flex justify-end gap-4 pt-6">
-                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
-                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">저장</button>
-                    </div>
-                </form>
             </div>
         </div>
     );
@@ -3737,6 +2422,672 @@ function WorkLogPage({ userData }) {
     );
 }
 
+function SampleRegistrationForm({ userData, location, showMessage, setCurrentStep, setPage }) {
+    const [formData, setFormData] = useState({
+        itemName: '',
+        sampleAmount: '',
+        type: '위판장',
+        lab: userData.inspectionOffice && userData.inspectionOffice.length > 0 ? userData.inspectionOffice[0] : '',
+        location: '',
+        datetime: '',
+        etc: ''
+    });
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [offices, setOffices] = useState([]);
+
+    const sampleTypes = ['위판장', '양식장', '천일염', '기타'];
+
+    useEffect(() => {
+        const fetchOffices = async () => {
+            try {
+                const officesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`));
+                const allOffices = officesSnapshot.docs.map(doc => doc.data().name);
+                setOffices(allOffices);
+                if (allOffices.length > 0 && !formData.lab) {
+                    if (!userData.inspectionOffice || userData.inspectionOffice.length === 0) {
+                         setFormData(prev => ({ ...prev, lab: allOffices[0] }));
+                    }
+                }
+            } catch (error) {
+                showMessage("검사소 목록을 불러오는 데 실패했습니다.");
+            }
+        };
+        fetchOffices();
+    }, [userData.inspectionOffice]);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!formData.itemName || !formData.lab || !formData.datetime) {
+            showMessage("품목명, 접수검사소, 채취일시는 필수 항목입니다.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            const officePrefix = formData.lab.substring(0, 2).toUpperCase();
+            const date = new Date();
+            const year = date.getFullYear().toString().slice(-2);
+            const month = (date.getMonth() + 1).toString().padStart(2, '0');
+            const day = date.getDate().toString().padStart(2, '0');
+            
+            const sequence = Date.now().toString().slice(-4); 
+            const sampleCode = `${officePrefix}${year}${month}${day}-${sequence}`;
+
+            const newSample = {
+                ...formData,
+                sampleCode: sampleCode,
+                status: 'receive_wait',
+                createdAt: Timestamp.now(),
+                createdBy: {
+                    uid: userData.uid,
+                    name: userData.name
+                },
+                history: [{
+                    action: '시료접수',
+                    actor: userData.name,
+                    timestamp: Timestamp.now(),
+                    location: location || null
+                }]
+            };
+            await addDoc(collection(db, `/artifacts/${appId}/public/data/samples`), newSample);
+            showMessage("시료가 성공적으로 접수되었습니다.");
+            setFormData({
+                itemName: '', sampleAmount: '', type: '위판장',
+                lab: userData.inspectionOffice && userData.inspectionOffice.length > 0 ? userData.inspectionOffice[0] : (offices.length > 0 ? offices[0] : ''),
+                location: '', datetime: '', etc: ''
+            });
+            setCurrentStep('receive_wait');
+        } catch (error) {
+            console.error("Error adding document: ", error);
+            showMessage("시료 접수에 실패했습니다.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">시료 접수</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">품목명 <span className="text-red-500">*</span></label>
+                        <input type="text" name="itemName" value={formData.itemName} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">시료량 (kg)</label>
+                        <input type="text" name="sampleAmount" value={formData.sampleAmount} onChange={handleChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">시료 분류</label>
+                        <select name="type" value={formData.type} onChange={handleChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                            {sampleTypes.map(type => <option key={type} value={type}>{type}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">접수 검사소 <span className="text-red-500">*</span></label>
+                        <select name="lab" value={formData.lab} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                            {offices.map(office => <option key={office} value={office}>{office}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">채취 장소</label>
+                        <input type="text" name="location" value={formData.location} onChange={handleChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">채취 일시 <span className="text-red-500">*</span></label>
+                        <input type="datetime-local" name="datetime" value={formData.datetime} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                    </div>
+                    <div className="md:col-span-2">
+                        <label className="block text-sm font-medium text-gray-700">추가정보</label>
+                        <textarea name="etc" value={formData.etc} onChange={handleChange} rows="3" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"></textarea>
+                    </div>
+                </div>
+                <div className="flex justify-end gap-4 pt-4">
+                    <button type="button" onClick={() => setPage('home')} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
+                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
+                        {isSubmitting ? '접수 중...' : '접수'}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+
+function SampleReceiveScreen({ sample, userData, location, showMessage, setSelectedSample }) {
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleReceive = async () => {
+        setIsSubmitting(true);
+        try {
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            
+            // Get current history or initialize to empty array
+            const currentHistory = sample.history || [];
+
+            await updateDoc(sampleRef, {
+                status: 'prep_wait',
+                history: [
+                    ...currentHistory,
+                    {
+                        action: '시료수령',
+                        actor: userData.name,
+                        timestamp: Timestamp.now(),
+                        location: location || null
+                    }
+                ]
+            });
+            showMessage("시료가 성공적으로 수령처리되었습니다.");
+            setSelectedSample(null); // Go back to the list
+        } catch (error) {
+            console.error("Error updating document: ", error);
+            showMessage("시료 수령 처리에 실패했습니다.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">시료 수령 확인</h2>
+            <div className="space-y-4 mb-6">
+                <div><strong>시료 ID:</strong> {sample.sampleCode}</div>
+                <div><strong>품목명:</strong> {sample.itemName}</div>
+                <div><strong>시료량:</strong> {sample.sampleAmount} kg</div>
+                <div><strong>채취일시:</strong> {sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
+                <div><strong>채취장소:</strong> {sample.location}</div>
+                <div><strong>접수자:</strong> {sample.createdBy.name}</div>
+            </div>
+            <div className="flex justify-end gap-4 pt-4 border-t">
+                <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
+                <button type="button" onClick={handleReceive} disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
+                    {isSubmitting ? '처리 중...' : '수령 확인'}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function SamplePrepScreen({ sample, userData, location, showMessage, setSelectedSample }) {
+    const [formData, setFormData] = useState({
+        prepMethod: 'drying',
+        startTime: '',
+        endTime: '',
+        notes: ''
+    });
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!formData.startTime || !formData.endTime) {
+            showMessage("시작시간과 종료시간은 필수 항목입니다.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            const currentHistory = sample.history || [];
+            await updateDoc(sampleRef, {
+                status: 'analysis_wait',
+                history: [
+                    ...currentHistory,
+                    {
+                        action: '시료전처리',
+                        actor: userData.name,
+                        timestamp: Timestamp.now(),
+                        location: location || null,
+                        details: formData
+                    }
+                ]
+            });
+            showMessage("시료 전처리가 완료되었습니다.");
+            setSelectedSample(null);
+        } catch (error) {
+            console.error("Error updating document: ", error);
+            showMessage("시료 전처리 기록에 실패했습니다.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">시료 전처리 ({sample.sampleCode})</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">전처리 방법</label>
+                    <select name="prepMethod" value={formData.prepMethod} onChange={handleChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
+                        <option value="drying">건조</option>
+                        <option value="grinding">분쇄</option>
+                        <option value="homogenizing">균질화</option>
+                        <option value="other">기타</option>
+                    </select>
+                </div>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">시작시간</label>
+                        <input type="datetime-local" name="startTime" value={formData.startTime} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">종료시간</label>
+                        <input type="datetime-local" name="endTime" value={formData.endTime} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                    </div>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">특이사항</label>
+                    <textarea name="notes" value={formData.notes} onChange={handleChange} rows="3" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"></textarea>
+                </div>
+                <div className="flex justify-end gap-4 pt-4 border-t">
+                    <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
+                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
+                        {isSubmitting ? '저장 중...' : '전처리 완료'}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+
+function SampleAnalysisScreen({ sample, userData, location, showMessage, setSelectedSample }) {
+    const [equipment, setEquipment] = useState([]);
+    const [selectedEquipment, setSelectedEquipment] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    useEffect(() => {
+        const fetchEquipment = async () => {
+            try {
+                // Assuming equipment is stored per office. Adjust if global.
+                const q = query(collection(db, `/artifacts/${appId}/public/data/equipment`), where("inspectionOffice", "==", sample.lab));
+                const querySnapshot = await getDocs(q);
+                const equipmentList = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setEquipment(equipmentList);
+                if (equipmentList.length > 0) {
+                    setSelectedEquipment(equipmentList[0].id);
+                }
+            } catch (error) {
+                showMessage("분석장비 목록을 불러오는 데 실패했습니다.");
+                console.error(error);
+            }
+        };
+        fetchEquipment();
+    }, [sample.lab]);
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!selectedEquipment) {
+            showMessage("분석장비를 선택해주세요.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            const currentHistory = sample.history || [];
+            await updateDoc(sampleRef, {
+                status: 'analyzing',
+                history: [
+                    ...currentHistory,
+                    {
+                        action: '분석시작',
+                        actor: userData.name,
+                        timestamp: Timestamp.now(),
+                        location: location || null,
+                        details: { equipmentId: selectedEquipment, equipmentName: equipment.find(e=>e.id === selectedEquipment)?.name }
+                    }
+                ]
+            });
+            showMessage("분석을 시작합니다.");
+            setSelectedSample(null);
+        } catch (error) {
+            console.error("Error updating document: ", error);
+            showMessage("분석 시작 처리에 실패했습니다.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">분석 시작 ({sample.sampleCode})</h2>
+            <form onSubmit={handleSubmit} className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">분석 장비 선택</label>
+                    <select 
+                        value={selectedEquipment} 
+                        onChange={(e) => setSelectedEquipment(e.target.value)} 
+                        className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+                        required
+                    >
+                        {equipment.length > 0 ? (
+                            equipment.map(eq => <option key={eq.id} value={eq.id}>{eq.name} ({eq.model})</option>)
+                        ) : (
+                            <option value="" disabled>사용 가능한 장비가 없습니다.</option>
+                        )}
+                    </select>
+                </div>
+                <div className="flex justify-end gap-4 pt-4 border-t">
+                    <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
+                    <button type="submit" disabled={isSubmitting || equipment.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
+                        {isSubmitting ? '처리 중...' : '분석 시작'}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+
+function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSelectedSample }) {
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleComplete = async () => {
+        setIsSubmitting(true);
+        try {
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            const currentHistory = sample.history || [];
+            await updateDoc(sampleRef, {
+                status: 'analysis_done',
+                history: [
+                    ...currentHistory,
+                    {
+                        action: '분석완료',
+                        actor: userData.name,
+                        timestamp: Timestamp.now(),
+                        location: location || null,
+                    }
+                ]
+            });
+            showMessage("분석이 완료되었습니다.");
+            setSelectedSample(null);
+        } catch (error) {
+            console.error("Error updating document: ", error);
+            showMessage("분석 완료 처리에 실패했습니다.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const analysisStartEntry = sample.history?.find(h => h.action === '분석시작');
+    const analysisStartTime = analysisStartEntry ? analysisStartEntry.timestamp.toDate() : null;
+
+    return (
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">분석 진행 중 ({sample.sampleCode})</h2>
+            <div className="space-y-3 mb-6">
+                <div><strong>품목명:</strong> {sample.itemName}</div>
+                <div><strong>분석 장비:</strong> {analysisStartEntry?.details?.equipmentName || '정보 없음'}</div>
+                <div><strong>분석 시작 시간:</strong> {analysisStartTime ? analysisStartTime.toLocaleString() : '정보 없음'}</div>
+                {analysisStartTime && (
+                    <div className="font-bold text-blue-600">
+                        경과 시간: {formatDuration(analysisStartTime, new Date())}
+                    </div>
+                )}
+            </div>
+            <div className="flex justify-end gap-4 pt-4 border-t">
+                <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
+                <button type="button" onClick={handleComplete} disabled={isSubmitting} className="px-4 py-2 bg-green-600 text-white rounded-md disabled:bg-gray-400">
+                    {isSubmitting ? '처리 중...' : '분석 완료'}
+                </button>
+            </div>
+        </div>
+    );
+}
+
+function SampleAnalysisDoneScreen({ sample, userData, location, showMessage, setSelectedSample }) {
+    const [results, setResults] = useState([{ radionuclide: 'I-131', activity: '', mda: '' }, { radionuclide: 'Cs-134', activity: '', mda: '' }, { radionuclide: 'Cs-137', activity: '', mda: '' }]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+
+    const handleResultChange = (index, field, value) => {
+        const newResults = [...results];
+        newResults[index][field] = value;
+        setResults(newResults);
+    };
+
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        try {
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            const currentHistory = sample.history || [];
+            await updateDoc(sampleRef, {
+                status: 'tech_review_wait',
+                history: [
+                    ...currentHistory,
+                    {
+                        action: '분석평가',
+                        actor: userData.name,
+                        timestamp: Timestamp.now(),
+                        location: location || null,
+                        results: results
+                    }
+                ]
+            });
+            showMessage("분석 결과가 저장되었습니다.");
+            setSelectedSample(null);
+        } catch (error) {
+            console.error("Error updating document: ", error);
+            showMessage("분석 결과 저장에 실패했습니다.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    return (
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">분석 결과 입력 ({sample.sampleCode})</h2>
+            <form onSubmit={handleSubmit} className="space-y-6">
+                {results.map((result, index) => (
+                    <div key={index} className="p-4 border rounded-lg">
+                        <h3 className="font-semibold text-lg mb-2">{result.radionuclide}</h3>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">측정 방사능 농도 (Bq/kg)</label>
+                                <input 
+                                    type="number" 
+                                    step="any"
+                                    value={result.activity} 
+                                    onChange={(e) => handleResultChange(index, 'activity', e.target.value)} 
+                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+                                    required 
+                                />
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700">최소검출가능농도 (Bq/kg)</label>
+                                <input 
+                                    type="number" 
+                                    step="any"
+                                    value={result.mda} 
+                                    onChange={(e) => handleResultChange(index, 'mda', e.target.value)} 
+                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+                                    required 
+                                />
+                            </div>
+                        </div>
+                    </div>
+                ))}
+                <div className="flex justify-end gap-4 pt-4 border-t">
+                    <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
+                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
+                        {isSubmitting ? '저장 중...' : '결과 저장 및 검토 요청'}
+                    </button>
+                </div>
+            </form>
+        </div>
+    );
+}
+
+function SampleTechReviewScreen({ sample, userData, location, showMessage, setSelectedSample }) {
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [rejectionReason, setRejectionReason] = useState('');
+
+    const handleReview = async (approved) => {
+        if (!approved && !rejectionReason) {
+            showMessage("반려 시에는 사유를 반드시 입력해야 합니다.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            const currentHistory = sample.history || [];
+            const newStatus = approved ? 'assoc_review_wait' : 'analysis_done'; // Go to next review or back to analyst
+
+            await updateDoc(sampleRef, {
+                status: newStatus,
+                history: [
+                    ...currentHistory,
+                    {
+                        action: '기술책임자 검토',
+                        actor: userData.name,
+                        timestamp: Timestamp.now(),
+                        approved: approved,
+                        rejectionReason: approved ? null : rejectionReason,
+                    }
+                ]
+            });
+            showMessage(`결과가 ${approved ? '승인' : '반려'}되었습니다.`);
+            setSelectedSample(null);
+        } catch (error) {
+            console.error("Error updating document: ", error);
+            showMessage("검토 처리에 실패했습니다.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const analysisResults = sample.history?.find(h => h.action === '분석평가')?.results;
+
+    return (
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">기술책임자 검토 ({sample.sampleCode})</h2>
+            
+            <div className="space-y-4 mb-6">
+                {analysisResults ? analysisResults.map((result, index) => (
+                    <div key={index} className="p-4 border rounded-lg bg-gray-50">
+                        <h3 className="font-semibold text-lg mb-2">{result.radionuclide}</h3>
+                        <p><strong>측정 방사능 농도:</strong> {result.activity} Bq/kg</p>
+                        <p><strong>최소검출가능농도:</strong> {result.mda} Bq/kg</p>
+                    </div>
+                )) : <p>분석 결과가 없습니다.</p>}
+            </div>
+
+            <div className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">반려 사유 (반려 시 필수)</label>
+                    <textarea 
+                        value={rejectionReason}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        rows="3" 
+                        className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+                    ></textarea>
+                </div>
+                <div className="flex justify-end gap-4 pt-4 border-t">
+                    <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
+                    <button type="button" onClick={() => handleReview(false)} disabled={isSubmitting} className="px-4 py-2 bg-red-600 text-white rounded-md disabled:bg-gray-400">
+                        {isSubmitting ? '처리 중...' : '반려'}
+                    </button>
+                    <button type="button" onClick={() => handleReview(true)} disabled={isSubmitting} className="px-4 py-2 bg-green-600 text-white rounded-md disabled:bg-gray-400">
+                        {isSubmitting ? '처리 중...' : '승인'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
+function SampleAssocReviewScreen({ sample, userData, location, showMessage, setSelectedSample }) {
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [rejectionReason, setRejectionReason] = useState('');
+
+    const handleReview = async (approved) => {
+        if (!approved && !rejectionReason) {
+            showMessage("반려 시에는 사유를 반드시 입력해야 합니다.");
+            return;
+        }
+        setIsSubmitting(true);
+        try {
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            const currentHistory = sample.history || [];
+            const newStatus = approved ? 'complete' : 'tech_review_wait'; // Final approval or back to tech reviewer
+
+            await updateDoc(sampleRef, {
+                status: newStatus,
+                history: [
+                    ...currentHistory,
+                    {
+                        action: '협회 검토',
+                        actor: userData.name,
+                        timestamp: Timestamp.now(),
+                        approved: approved,
+                        rejectionReason: approved ? null : rejectionReason,
+                    }
+                ]
+            });
+            showMessage(`결과가 ${approved ? '최종 승인' : '반려'}되었습니다.`);
+            setSelectedSample(null);
+        } catch (error) {
+            console.error("Error updating document: ", error);
+            showMessage("검토 처리에 실패했습니다.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const analysisResults = sample.history?.find(h => h.action === '분석평가')?.results;
+    const techReview = sample.history?.find(h => h.action === '기술책임자 검토');
+
+    return (
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">협회 최종 검토 ({sample.sampleCode})</h2>
+            
+            <div className="space-y-4 mb-6">
+                {analysisResults ? analysisResults.map((result, index) => (
+                    <div key={index} className="p-4 border rounded-lg bg-gray-50">
+                        <h3 className="font-semibold text-lg mb-2">{result.radionuclide}</h3>
+                        <p><strong>측정 방사능 농도:</strong> {result.activity} Bq/kg</p>
+                        <p><strong>최소검출가능농도:</strong> {result.mda} Bq/kg</p>
+                    </div>
+                )) : <p>분석 결과가 없습니다.</p>}
+                {techReview && (
+                    <div className="p-4 border-l-4 border-blue-500 bg-blue-50">
+                        <p><strong>기술책임자:</strong> {techReview.actor}</p>
+                        <p><strong>검토일시:</strong> {techReview.timestamp.toDate().toLocaleString()}</p>
+                        <p><strong>상태:</strong> {techReview.approved ? '승인' : '반려'}</p>
+                        {!techReview.approved && <p><strong>반려사유:</strong> {techReview.rejectionReason}</p>}
+                    </div>
+                )}
+            </div>
+
+            <div className="space-y-4">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">반려 사유 (반려 시 필수)</label>
+                    <textarea 
+                        value={rejectionReason}
+                        onChange={(e) => setRejectionReason(e.target.value)}
+                        rows="3" 
+                        className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
+                    ></textarea>
+                </div>
+                <div className="flex justify-end gap-4 pt-4 border-t">
+                    <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
+                    <button type="button" onClick={() => handleReview(false)} disabled={isSubmitting} className="px-4 py-2 bg-red-600 text-white rounded-md disabled:bg-gray-400">
+                        {isSubmitting ? '처리 중...' : '반려'}
+                    </button>
+                    <button type="button" onClick={() => handleReview(true)} disabled={isSubmitting} className="px-4 py-2 bg-green-600 text-white rounded-md disabled:bg-gray-400">
+                        {isSubmitting ? '처리 중...' : '최종 승인'}
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+}
+
 function AnalysisManagement({ userData, location, locationError, onRetryGps, setPage, initialStep }) {
     const [samplesByStatus, setSamplesByStatus] = useState({});
     const [currentStep, setCurrentStep] = useState(initialStep || null); 
@@ -3782,126 +3133,90 @@ function AnalysisManagement({ userData, location, locationError, onRetryGps, set
         if (!stepInfo) return;
         const canAccess = stepInfo.roles.includes(userData.qualificationLevel) || stepInfo.roles.includes('all');
         if(canAccess) { setCurrentStep(stepId); setSelectedSample(null); } 
-        else { setMessage(`이 단계에 접근할 권한이 없습니다.`); } // Corrected typo: '권한이' instead of '권한이없습니다.'
+        else { setMessage(`이 단계에 접근할 권한이 없습니다.`); }
     };
     
     const renderStepContent = () => {
         if (!currentStep) return <p className="text-center text-gray-500 mt-10">상단 플로우에서 단계를 선택하여 작업을 시작하세요.</p>;
+        
         const stepInfo = processSteps.find(s => s.id === currentStep);
         if (!stepInfo) return null;
+
         const samplesForStep = samplesByStatus[currentStep] || [];
-        const childProps = { userData, location, locationError, onRetryGps, showMessage: setMessage, setPage };
+        const childProps = { userData, location, locationError, onRetryGps, showMessage: setMessage, setPage, setSelectedSample };
 
-        if(selectedSample) {
+        if (selectedSample) {
             const DetailComponent = stepInfo.component;
-            return DetailComponent ? <DetailComponent sample={selectedSample} {...childProps} setSelectedSample={setSelectedSample} /> : <p className="text-center mt-10">{stepInfo.name} 상세 화면은 현재 개발 중입니다.</p>;
+            return DetailComponent ? <DetailComponent sample={selectedSample} {...childProps} /> : <p className="text-center mt-10">{stepInfo.name} 상세 화면은 현재 개발 중입니다.</p>;
         }
         
-        if (currentStep === 'receipt') return <SampleRegistrationForm {...childProps} setCurrentStep={setCurrentStep} setPage={setPage} />;
-        
-        if (currentStep === 'prep_wait') {
+        if (currentStep === 'receipt') {
+            return <SampleRegistrationForm {...childProps} setCurrentStep={setCurrentStep} />;
+        }
+
+        if (currentStep === 'complete') {
             return (
                 <div>
                     <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
-                    <div className="bg-white rounded-lg shadow">
-                        <div className="grid grid-cols-4 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg">
-                            <div>시료ID</div>
-                            <div>품목명</div>
-                            <div>시료채취일시</div>
-                            <div>시료수령일시</div>
-                        </div>
-                        <ul className="divide-y divide-gray-200">
-                            {samplesForStep.length > 0 ? samplesForStep.map(sample => {
-                                const receiveHistory = sample.history?.find(h => h.action === '시료수령');
-                                const receiveDate = receiveHistory ? receiveHistory.timestamp.toDate().toLocaleString() : 'N/A';
-                                return (
-                                    <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className="grid grid-cols-4 gap-4 p-4 text-sm hover:bg-gray-50 cursor-pointer">
-                                        <div className="font-medium text-gray-900">{sample.sampleCode}</div>
-                                        <div>{sample.itemName}</div>
-                                        <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
-                                        <div>{receiveDate}</div>
-                                    </li>
-                                );
-                            }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
-                        </ul>
-                    </div>
+                    <p className="text-center text-gray-500 mt-10">모든 절차가 완료된 시료 목록입니다.</p>
                 </div>
             );
         }
 
-        if (currentStep === 'analysis_wait') {
-            return (
-                <div>
-                    <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
-                    <div className="bg-white rounded-lg shadow">
-                        <div className="grid grid-cols-5 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg">
-                            <div>시료ID</div>
-                            <div>품목명</div>
-                            <div>시료채취일시</div>
-                            <div>시료수령일시</div>
-                            <div>전처리완료일시</div>
-                        </div>
-                        <ul className="divide-y divide-gray-200">
-                            {samplesForStep.length > 0 ? samplesForStep.map(sample => {
-                                const receiveHistory = sample.history?.find(h => h.action === '시료수령');
-                                const prepHistory = sample.history?.find(h => h.action === '시료전처리');
-                                const receiveDate = receiveHistory ? receiveHistory.timestamp.toDate().toLocaleString() : 'N/A';
-                                const prepDate = prepHistory ? prepHistory.timestamp.toDate().toLocaleString() : 'N/A';
-                                return (
-                                    <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className="grid grid-cols-5 gap-4 p-4 text-sm hover:bg-gray-50 cursor-pointer">
-                                        <div className="font-medium text-gray-900">{sample.sampleCode}</div>
-                                        <div>{sample.itemName}</div>
-                                        <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
-                                        <div>{receiveDate}</div>
-                                        <div>{prepDate}</div>
-                                    </li>
-                                );
-                            }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
-                        </ul>
+        // Default list view for other steps
+        return (
+            <div>
+                <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
+                <div className="bg-white rounded-lg shadow">
+                    <div className="grid grid-cols-4 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg text-sm">
+                        <div>시료ID</div>
+                        <div>품목명</div>
+                        <div>채취일시</div>
+                        <div>상태변경일시</div>
                     </div>
+                    <ul className="divide-y divide-gray-200">
+                        {samplesForStep.length > 0 ? samplesForStep.map(sample => {
+                            const lastHistory = sample.history && sample.history.length > 0 ? sample.history[sample.history.length - 1] : null;
+                            const lastUpdate = lastHistory ? lastHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                            return (
+                                <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className="grid grid-cols-4 gap-4 p-4 text-sm hover:bg-gray-50 cursor-pointer">
+                                    <div className="font-medium text-gray-900">{sample.sampleCode}</div>
+                                    <div>{sample.itemName}</div>
+                                    <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
+                                    <div>{lastUpdate}</div>
+                                </li>
+                            );
+                        }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
+                    </ul>
                 </div>
-            );
-        }
+            </div>
+        );
+    };
 
-        if (currentStep === 'analyzing') {
-            return (
-                <div>
-                    <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
-                    <div className="bg-white rounded-lg shadow">
-                        <div className="grid grid-cols-6 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg">
-                            <div>시료ID</div>
-                            <div>품목명</div>
-                            <div>시료채취일시</div>
-                            <div>시료수령일시</div>
-                            <div>전처리완료일시</div>
-                            <div>계측시작일시</div>
-                        </div>
-                        <ul className="divide-y divide-gray-200">
-                            {samplesForStep.length > 0 ? samplesForStep.map(sample => {
-                                const receiveHistory = sample.history?.find(h => h.action === '시료수령');
-                                const prepHistory = sample.history?.find(h => h.action === '시료전처리');
-                                const analysisHistory = sample.history?.find(h => h.action === '분석');
-                                const receiveDate = receiveHistory ? receiveHistory.timestamp.toDate().toLocaleString() : 'N/A';
-                                const prepDate = prepHistory ? prepHistory.timestamp.toDate().toLocaleString() : 'N/A';
-                                const analysisDate = analysisHistory ? new Date(analysisHistory.measurementDateTime).toLocaleString() : 'N/A';
-                                return (
-                                    <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className="grid grid-cols-6 gap-4 p-4 text-sm hover:bg-gray-50 cursor-pointer">
-                                        <div className="font-medium text-gray-900">{sample.sampleCode}</div>
-                                        <div>{sample.itemName}</div>
-                                        <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
-                                        <div>{receiveDate}</div>
-                                        <div>{prepDate}</div>
-                                        <div>{analysisDate}</div>
-                                    </li>
-                                );
-                            }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
-                        </ul>
-                    </div>
-                </div>
-            );
-        }
-
-        if (currentStep === 'analysis_done') {
-}
-    }
+    return (
+        <div className="space-y-6">
+            <div className="flex flex-wrap items-center gap-4 p-2">
+                {processSteps.map((step, index) => (
+                    <React.Fragment key={step.id}>
+                        <button 
+                            onClick={() => handleStepClick(step.id)}
+                            className={`w-48 p-4 rounded-lg shadow-md text-center ${currentStep === step.id ? 'bg-blue-600 text-white' : 'bg-white'}`}
+                        >
+                            <div className="font-bold text-sm">{index + 1}. {step.name}</div>
+                            <div className="text-2xl font-bold">{(samplesByStatus[step.id] || []).length}</div>
+                        </button>
+                        {index < processSteps.length - 1 && (
+                            <div className="hidden md:flex items-center justify-center text-gray-400 font-bold text-2xl">
+                                &rarr;
+                            </div>
+                        )}
+                    </React.Fragment>
+                ))}
+            </div>
+            {message && <p className="p-3 rounded-lg bg-yellow-100 text-yellow-800 text-center">{message}</p>}
+            <div className="mt-6">
+                {renderStepContent()}
+            </div>
+        </div>
+    );
 }
