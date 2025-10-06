@@ -3,14 +3,10 @@ import { initializeApp } from 'firebase/app';
 import { 
     getFirestore, 
     collection, 
-    addDoc, 
     doc, 
     setDoc, 
-    getDocs,
     onSnapshot,     
     query, 
-    where, 
-    updateDoc,
     deleteDoc,
     orderBy,
     Timestamp
@@ -35,8 +31,8 @@ const firebaseConfig = {
 let app;
 try {
     app = initializeApp(firebaseConfig);
-} catch (error) {
-    //
+} catch (_error) {
+    console.error("Firebase initialization failed:", _error);
 }
 
 const db = getFirestore(app);
@@ -84,8 +80,9 @@ function NoticeForm({ userData, onClose, setMessage }) {
             });
             setMessage("공지사항이 성공적으로 등록되었습니다.");
             onClose();
-        } catch (error) {
-            setMessage(`등록 실패: ${error.message}`);
+        } catch (_error) {
+            console.error("Notice creation failed:", _error);
+            setMessage(`등록 실패: ${_error.message}`);
         } finally {
             setIsSubmitting(false);
         }
@@ -113,7 +110,7 @@ export default function NoticeBoard({ userData }) {
     const [selectedNotice, setSelectedNotice] = useState(null);
     const [isFormOpen, setIsFormOpen] = useState(false);
     const [message, setMessage] = useState('');
-    const canWrite = ['관리자', '협회'].includes(userData.qualificationLevel);
+    const canWrite = ['최고관리자', '협회관리자'].includes(userData.qualificationLevel);
 
     useEffect(() => {
         const noticesRef = collection(db, `/artifacts/${appId}/public/data/notices`);
@@ -121,7 +118,8 @@ export default function NoticeBoard({ userData }) {
         const unsubscribe = onSnapshot(q, (snapshot) => {
             setNotices(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
             setIsLoading(false);
-        }, (error) => {
+        }, (_error) => {
+            console.error("Failed to fetch notices:", _error);
             setMessage("공지사항을 불러오는 데 실패했습니다.");
             setIsLoading(false);
         });
@@ -134,8 +132,9 @@ export default function NoticeBoard({ userData }) {
             await deleteDoc(doc(db, `/artifacts/${appId}/public/data/notices`, noticeId));
             setMessage("공지사항이 삭제되었습니다.");
             setSelectedNotice(null);
-        } catch (error) {
-            setMessage(`삭제 실패: ${error.message}`);
+        } catch (_error) {
+            console.error("Failed to delete notice:", _error);
+            setMessage(`삭제 실패: ${_error.message}`);
         }
     };
 

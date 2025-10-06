@@ -165,7 +165,7 @@ function LoginScreen({ initialError, onDemoLogin }) {
     const [error, setError] = useState(initialError || '');
     const [message, setMessage] = useState('');
     const [isLoggingIn, setIsLoggingIn] = useState(false);
-    const [demoRole, setDemoRole] = useState('관리자');
+    const [demoRole, setDemoRole] = useState('최고관리자');
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -218,7 +218,7 @@ function LoginScreen({ initialError, onDemoLogin }) {
                 <div className="space-y-3">
                     <p className="text-center text-sm text-gray-600">데모 모드로 접속하기</p>
                     <select value={demoRole} onChange={(e) => setDemoRole(e.target.value)} className="w-full px-4 py-3 rounded-lg border border-gray-300 focus:outline-none focus:ring-2 focus:ring-teal-500">
-                        {['시료채취원', '분석원', '분석보조원', '기술책임자', '해수부(1)', '해수부(2)', '협회관리자', '최고관리자'].map(r => <option key={r}>{r}</option>)}
+                        {['최고관리자', '시료채취원', '분석원', '분석보조원', '기술책임자', '해수부(1)', '해수부(2)', '협회관리자'].map(r => <option key={r}>{r}</option>)}
                     </select>
                     <button onClick={() => onDemoLogin(demoRole)} className="w-full bg-teal-500 text-white font-bold py-3 rounded-lg hover:bg-teal-600">{demoRole} (으)로 데모 접속</button>
                 </div>
@@ -1205,7 +1205,107 @@ function ControlDashboard({ userData }) {
 
 
 
-function ProgressStatus() { return <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-300">진행현황 페이지는 현재 개발 중입니다.</div>; }
+function ProgressStatus() {
+    const [stats, setStats] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+
+    useEffect(() => {
+        const fetchData = async () => {
+            try {
+                const [samplesSnapshot, officesSnapshot] = await Promise.all([
+                    getDocs(collection(db, `/artifacts/${appId}/public/data/samples`)),
+                    getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`))
+                ]);
+
+                const allSamples = samplesSnapshot.docs.map(doc => doc.data());
+                const allOffices = officesSnapshot.docs.map(doc => doc.data().name);
+
+                const officeStats = allOffices.reduce((acc, officeName) => {
+                    acc[officeName] = {
+                        total: 0,
+                        receipt: 0,
+                        received: 0,
+                        analysis_done: 0,
+                        complete: 0,
+                    };
+                    return acc;
+                }, {});
+
+                allSamples.forEach(sample => {
+                    if (officeStats[sample.lab]) {
+                        officeStats[sample.lab].total++;
+                        switch (sample.status) {
+                            case 'receipt':
+                                officeStats[sample.lab].receipt++;
+                                break;
+                            case 'prep_wait':
+                                officeStats[sample.lab].received++;
+                                break;
+                            case 'analysis_done':
+                                officeStats[sample.lab].analysis_done++;
+                                break;
+                            case 'complete':
+                                officeStats[sample.lab].complete++;
+                                break;
+                            default:
+                                break;
+                        }
+                    }
+                });
+
+                const statsArray = allOffices.map(name => ({
+                    name,
+                    ...officeStats[name]
+                }));
+
+                setStats(statsArray);
+            } catch (err) {
+                console.error("진행현황 데이터 로딩 실패:", err);
+                setError("데이터를 불러오는 데 실패했습니다.");
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        fetchData();
+    }, []);
+
+    if (loading) return <div className="text-center p-6">데이터를 불러오는 중...</div>;
+    if (error) return <div className="text-center p-6 text-red-500">{error}</div>;
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-300">
+            <h2 className="text-2xl font-bold mb-6">검사소별 진행현황</h2>
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">검사소</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">총 시료</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">시료접수</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">시료수령</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">분석완료</th>
+                            <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">결과통보</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {stats.map(office => (
+                            <tr key={office.name}>
+                                <td className="px-4 py-4 whitespace-nowrap font-medium text-gray-900">{office.name}</td>
+                                <td className="px-4 py-4 whitespace-nowrap">{office.total}</td>
+                                <td className="px-4 py-4 whitespace-nowrap">{office.receipt}</td>
+                                <td className="px-4 py-4 whitespace-nowrap">{office.received}</td>
+                                <td className="px-4 py-4 whitespace-nowrap">{office.analysis_done}</td>
+                                <td className="px-4 py-4 whitespace-nowrap">{office.complete}</td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    );
+}
 function AnalysisResultsPage() {
     const [samples, setSamples] = useState([]);
     const [offices, setOffices] = useState([]);
