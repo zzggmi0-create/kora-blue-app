@@ -168,7 +168,7 @@ export default function NoticeBoard({ userData }) {
                 {canWrite && <button onClick={() => setIsFormOpen(true)} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">새 공지 작성</button>}
             </div>
             {message && <p className="p-3 rounded-lg mb-4 bg-blue-100 text-blue-800">{message}</p>}
-            <div className="bg-white shadow-md rounded-lg"><ul className="divide-y divide-gray-200">
+            <div className="bg-white shadow-lg rounded-lg border border-gray-300"><ul className="divide-y divide-gray-200">
                 {notices.map(notice => (
                     <li key={notice.id} onClick={() => setSelectedNotice(notice)} className="p-4 hover:bg-gray-50 cursor-pointer">
                         <p className="font-semibold">{notice.title}</p>

@@ -112,6 +112,7 @@ export default function App() {
             } else {
                 setUser(null);
                 setUserData(null);
+                setAppMode(null);
             }
             setLoading(false);
         });
@@ -144,6 +145,7 @@ export default function App() {
             setAppMode(null);
         } else {
             signOut(auth);
+            setAppMode(null);
         }
     };
 
@@ -337,7 +339,7 @@ function AppShell({ children, pageTitle, userData, setAppMode, onLogout, onNavCl
 
     return (
         <div className="flex h-screen bg-gray-50">
-            <aside className={`fixed inset-y-0 left-0 bg-white shadow-md p-4 flex flex-col transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative md:w-64 z-30 transition-transform duration-300`}>
+            <aside className={`fixed inset-y-0 left-0 bg-white shadow-md p-4 flex flex-col transform ${isSidebarOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:relative md:w-64 z-30 transition-transform duration-300 border-r border-gray-300`}>
                 <div className="py-4 border-b px-4 text-center">
                     <img src={logo} alt="logo" className="h-12 w-auto mx-auto mb-2" />
                     <div>
@@ -371,6 +373,9 @@ function AnalysisSystemApp({ userData, setAppMode, onLogout }) {
     const [page, setPage] = useState('home');
     const [location, setLocation] = useState(null);
     const [locationError, setLocationError] = useState('');
+    const [workLogs, setWorkLogs] = useState([]);
+    const [isClockedIn, setIsClockedIn] = useState(false);
+    const [workLogMessage, setWorkLogMessage] = useState('');
 
     const fetchLocation = () => {
         setLocationError('');
@@ -387,14 +392,88 @@ function AnalysisSystemApp({ userData, setAppMode, onLogout }) {
         );
     };
 
-    useEffect(fetchLocation, []);
+    useEffect(() => {
+        if (userData) {
+            fetchLocation();
+        }
+    }, [userData]);
+
+    useEffect(() => {
+        if (!userData || !userData.uid) {
+            setWorkLogs([]);
+            setIsClockedIn(false);
+            return;
+        }
+
+        const q = query(
+            collection(db, `/artifacts/${appId}/public/data/worklogs`),
+            where("userId", "==", userData.uid),
+            orderBy("timestamp", "desc"),
+            limit(6)
+        );
+
+        const unsubscribe = onSnapshot(q, (snapshot) => {
+            const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+            setWorkLogs(logs);
+
+            if (logs.length > 0) {
+                setIsClockedIn(logs[0].type === '출근');
+            } else {
+                setIsClockedIn(false);
+            }
+        });
+
+        return () => unsubscribe();
+    }, [userData]);
+
+    if (!userData) {
+        return <div className="flex items-center justify-center h-full">사용자 정보를 불러오는 중...</div>;
+    }
+
+    const handleWork = async (type) => {
+        setIsClockedIn(type === '출근');
+        setWorkLogMessage('');
+
+        const newLog = {
+            id: `temp-${Date.now()}`,
+            type,
+            timestamp: { toDate: () => new Date() },
+            location: location ? { lat: location.lat, lng: location.lng } : null
+        };
+
+        setWorkLogs(prevLogs => [newLog, ...prevLogs.slice(0, 7)]);
+
+        try {
+            await addDoc(collection(db, `/artifacts/${appId}/public/data/worklogs`), {
+                userId: userData.uid,
+                userName: userData.name,
+                type,
+                timestamp: Timestamp.now(),
+                location: location ? { lat: location.lat, lng: location.lng } : null
+            });
+            setWorkLogMessage(`${type} 기록이 완료되었습니다.`);
+        } catch (error) {
+            setWorkLogMessage("근무기록 저장에 실패했습니다.");
+            setIsClockedIn(type !== '출근');
+            setWorkLogs(prevLogs => prevLogs.filter(log => log.id !== newLog.id));
+        }
+    };
 
     const renderPage = () => {
-        const props = { userData, location, locationError, onRetryGps: fetchLocation, setPage };
+        const props = { 
+            userData, 
+            location, 
+            locationError, 
+            onRetryGps: fetchLocation, 
+            setPage,
+            workLogs,
+            isClockedIn,
+            handleWork,
+            workLogMessage,
+            setWorkLogMessage
+        };
         switch (page) {
             case 'home': return <AnalysisHome {...props} />;
-
-            case 'receipt_status': return <div>접수현황 페이지는 현재 개발 중입니다.</div>;
             case 'analysis': return <AnalysisManagement {...props} initialStep="analysis" />;
             case 'receipt_status': return <div>접수현황 페이지는 현재 개발 중입니다.</div>;
             default: return <AnalysisHome {...props} />;
@@ -469,7 +548,7 @@ function EmergencyContacts({ currentUser }) {
     );
 
     return (
-        <div className="bg-white p-6 rounded-lg shadow-md mt-6">
+        <div className="bg-white p-6 rounded-lg shadow-lg mt-6 border border-gray-300">
             <h3 className="text-lg font-semibold border-b pb-2 mb-4">비상연락망</h3>
             <input
                 type="text"
@@ -495,78 +574,25 @@ function EmergencyContacts({ currentUser }) {
     );
 }
 
-function AnalysisHome({ userData, location, locationError, onRetryGps, setPage }) {
-    const [message, setMessage] = useState('');
-    const [workLogs, setWorkLogs] = useState([]);
-    const [isClockedIn, setIsClockedIn] = useState(false);
-
-    useEffect(() => {
-        const q = query(
-            collection(db, `/artifacts/${appId}/public/data/worklogs`),
-            where("userId", "==", userData.uid),
-            orderBy("timestamp", "desc"),
-            limit(8)
-        );
-
-        const unsubscribe = onSnapshot(q, (snapshot) => {
-            const logs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-            setWorkLogs(logs);
-
-            if (logs.length > 0) {
-                setIsClockedIn(logs[0].type === '출근');
-            } else {
-                setIsClockedIn(false);
-            }
-        });
-
-        return () => unsubscribe();
-    }, [userData.uid]);
-
-    const handleWork = async (type) => {
-        // Optimistically update button state and clear previous messages
-        setIsClockedIn(type === '출근');
-        setMessage('');
-
-        // Create a temporary log entry for optimistic UI update
-        const newLog = {
-            id: `temp-${Date.now()}`, // Temporary unique ID
-            type,
-            timestamp: { toDate: () => new Date() }, // Mock Firestore Timestamp for immediate display
-            location: location ? { lat: location.lat, lng: location.lng } : null
-        };
-
-        // Optimistically add the new log to the list
-        setWorkLogs(prevLogs => [newLog, ...prevLogs.slice(0, 7)]);
-
-        try {
-            // Asynchronously save the record to the database
-            await addDoc(collection(db, `/artifacts/${appId}/public/data/worklogs`), {
-                userId: userData.uid,
-                userName: userData.name,
-                type,
-                timestamp: Timestamp.now(),
-                location: location ? { lat: location.lat, lng: location.lng } : null
-            });
-            
-            // Show success message. The real-time listener will automatically
-            // replace the temporary log with the confirmed one from the database.
-            setMessage(`${type} 기록이 완료되었습니다.`);
-
-        } catch (error) {
-            // If the save fails, show an error and revert the optimistic updates
-            setMessage("근무기록 저장에 실패했습니다.");
-            setIsClockedIn(type !== '출근'); // Revert button state
-            setWorkLogs(prevLogs => prevLogs.filter(log => log.id !== newLog.id)); // Remove the temporary log
-        }
-    };
-
+function AnalysisHome({ 
+    userData, 
+    location, 
+    locationError, 
+    onRetryGps, 
+    setPage,
+    workLogs,
+    isClockedIn,
+    handleWork,
+    workLogMessage 
+}) {
     return (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {/* Left Column */}
             <div className="md:col-span-1 space-y-6">
                 {/* User Profile */}
-                <div className="bg-white p-6 rounded-lg shadow-md text-center">
+                <div className="bg-white p-6 rounded-lg shadow-lg text-center border border-gray-300">
                     <div className="w-24 h-24 rounded-full bg-gray-200 mx-auto mb-4 flex items-center justify-center">
+                        {/* Placeholder for profile picture */}
                         <span className="text-gray-500">사진</span>
                     </div>
                     <h2 className="text-xl font-bold">{userData.name}</h2>
@@ -576,9 +602,9 @@ function AnalysisHome({ userData, location, locationError, onRetryGps, setPage }
                 </div>
 
                 {/* Attendance */}
-                <div className="bg-white p-6 rounded-lg shadow-md">
+                <div className="bg-white p-6 rounded-lg shadow-lg border border-gray-300">
                     <h3 className="text-lg font-semibold border-b pb-2 mb-4">근무 기록</h3>
-                    {message && <p className={`p-3 rounded-lg mb-4 text-sm ${message.includes('실패') ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>{message}</p>}
+                    {workLogMessage && <p className={`p-3 rounded-lg mb-4 text-sm ${workLogMessage.includes('실패') ? 'bg-red-100 text-red-800' : 'bg-blue-100 text-blue-800'}`}>{workLogMessage}</p>}
                     <div className="flex gap-4 mb-4">
                         <button onClick={() => handleWork('출근')} disabled={isClockedIn} className="flex-1 bg-green-500 text-white px-6 py-2 rounded-lg hover:bg-green-600 disabled:bg-gray-400">출근 기록</button>
                         <button onClick={() => handleWork('퇴근')} disabled={!isClockedIn} className="flex-1 bg-red-500 text-white px-6 py-2 rounded-lg hover:bg-red-600 disabled:bg-gray-400">퇴근 기록</button>
