@@ -4832,6 +4832,102 @@ function SampleTechReviewScreen({ sample, userData, location, setSelectedSample,
 
 
 
+function SampleAssocReviewScreen({ sample, setSelectedSample }) {
+
+
+
+
+
+
+
+    return (
+
+
+
+
+
+
+
+        <div className="bg-white p-6 rounded-lg shadow-md space-y-6">
+
+
+
+
+
+
+
+            <div>
+
+
+
+
+
+
+
+                <button onClick={() => setSelectedSample(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로</button>
+
+
+
+
+
+
+
+                <h3 className="text-2xl font-bold">협회 검토: {sample.sampleCode}</h3>
+
+
+
+
+
+
+
+                <p className="text-center text-gray-500 mt-10">이 화면은 현재 개발 중입니다.</p>
+
+
+
+
+
+
+
+            </div>
+
+
+
+
+
+
+
+        </div>
+
+
+
+
+
+
+
+    );
+
+
+
+
+
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 function ControlDashboard({ userData }) {
 
     const [notices, setNotices] = useState([]);
