@@ -193,8 +193,8 @@ function LoginScreen({ initialError, onDemoLogin }) {
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-4">
-            <div className="w-full max-w-md bg-white rounded-2xl shadow-xl p-6 sm:p-8 space-y-6">
+        <div className="min-h-screen bg-gradient-to-br from-blue-100 to-indigo-200 flex items-center justify-center p-4">
+            <div className="w-full max-w-md bg-white rounded-2xl shadow-2xl p-6 sm:p-8 space-y-6 border border-gray-200 transition-transform hover:scale-105">
                 <div className="text-center">
                     <img src={logo} alt="logo" className="mx-auto h-16 w-auto mb-4" />
                     <h1 className="text-3xl font-bold text-gray-800">수산물 방사능분석 플랫폼</h1>
@@ -877,7 +877,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
     const [dashboardData, setDashboardData] = useState({
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -885,7 +909,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
         receiptCount: 0,
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -893,7 +941,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
         doneCount: 0,
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -901,7 +973,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
     });
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -909,7 +1005,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
     const [samples, setSamples] = useState([]);
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -917,7 +1037,49 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
     const [error, setError] = useState('');
+
+
+
+    const [workingNowCount, setWorkingNowCount] = useState(0);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -927,7 +1089,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
         const fetchData = async () => {
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -935,7 +1121,31 @@ function ControlDashboard({ userData }) {
 
 
 
-                const [samplesSnapshot, officesSnapshot] = await Promise.all([
+
+
+
+
+
+
+
+
+
+
+
+
+                const [samplesSnapshot, officesSnapshot, worklogsSnapshot] = await Promise.all([
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -943,7 +1153,35 @@ function ControlDashboard({ userData }) {
 
 
 
-                    getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`))
+
+
+
+
+
+
+
+
+
+
+
+
+                    getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`)),
+
+
+
+                    getDocs(collection(db, `/artifacts/${appId}/public/data/worklogs`))
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -953,9 +1191,119 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                 const allSamples = samplesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
                 const allOffices = officesSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+
+
+                const allWorklogs = worklogsSnapshot.docs.map(doc => doc.data());
+
+
+
+
+
+
+
+                const latestLogs = allWorklogs.reduce((acc, log) => {
+
+
+
+                    if (!acc[log.userId] || acc[log.userId].timestamp.toDate() < log.timestamp.toDate()) {
+
+
+
+                        acc[log.userId] = log;
+
+
+
+                    }
+
+
+
+                    return acc;
+
+
+
+                }, {});
+
+
+
+
+
+
+
+                const workingNowCount = Object.values(latestLogs).filter(log => log.type === '출근').length;
+
+
+
+                setWorkingNowCount(workingNowCount);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -965,7 +1313,45 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                 setOffices(allOffices);
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -975,7 +1361,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                     totalSamples: allSamples.length,
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -983,7 +1393,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                     receivedCount: allSamples.filter(s => s.status === 'prep_wait').length,
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -991,7 +1425,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                     totalOffices: allOffices.length,
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1001,7 +1459,45 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             } catch (err) {
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1009,7 +1505,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                 setError("데이터를 불러오는 데 실패했습니다.");
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1017,7 +1537,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                 setLoading(false);
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1025,11 +1569,47 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
         };
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
         fetchData();
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1039,7 +1619,45 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     if (loading) return <div className="text-center p-6">대시보드 데이터를 불러오는 중...</div>;
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1049,7 +1667,45 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     const stats = [
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1057,7 +1713,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
         { label: '시료접수', value: dashboardData.receiptCount, color: 'bg-yellow-500' },
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1065,7 +1745,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
         { label: '분석완료', value: dashboardData.doneCount, color: 'bg-green-500' },
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1075,7 +1779,45 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
     return (
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1083,7 +1825,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
             <div>
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1091,11 +1857,61 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                 <p className="text-gray-600">안녕하세요, {userData.name}님! 현재 시스템 현황입니다.</p>
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
             </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1105,7 +1921,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                 {stats.map(stat => (
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1113,7 +1953,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                         <p className="text-lg">{stat.label}</p>
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1121,7 +1985,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                     </div>
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1129,7 +2017,57 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
             </div>
+
+
+
+
+
+
+
+            <div className="bg-teal-500 p-6 rounded-lg text-white shadow-lg">
+
+
+
+                <p className="text-lg">근무중인 인원</p>
+
+
+
+                <p className="text-4xl font-bold">{workingNowCount}</p>
+
+
+
+            </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1139,7 +2077,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                 <h3 className="text-xl font-bold mb-4">검사소 현황 (총 {dashboardData.totalOffices}개소)</h3>
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1147,7 +2109,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                     <GisMap offices={offices} samples={samples} />
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1155,7 +2141,45 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
             </div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1165,7 +2189,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                 <div className="lg:col-span-1">
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1173,7 +2221,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                 </div>
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1181,7 +2253,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
                     <DashboardEmergencyContacts />
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1189,7 +2285,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
             </div>
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1197,7 +2317,31 @@ function ControlDashboard({ userData }) {
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
     );
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -1302,6 +2446,702 @@ function ProgressStatus() {
                         ))}
                     </tbody>
                 </table>
+            </div>
+        </div>
+    );
+}
+function InspectionOfficeManagement() {
+    const [offices, setOffices] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingOffice, setEditingOffice] = useState(null);
+    const [isCreating, setIsCreating] = useState(false);
+
+    const collectionRef = collection(db, `/artifacts/${appId}/public/data/inspection_offices`);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collectionRef, 
+            (snapshot) => {
+                const officesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setOffices(officesData);
+                setIsLoading(false);
+            }, 
+            (err) => {
+                console.error("Failed to fetch offices:", err);
+                setError('검사소 정보를 불러오는 데 실패했습니다.');
+                setIsLoading(false);
+            }
+        );
+        return () => unsubscribe();
+    }, []);
+
+    const handleCreate = () => {
+        setIsCreating(true);
+        setEditingOffice({ name: '', address: '', contact: '', coordinates: '' });
+        setIsModalOpen(true);
+    };
+
+    const handleEdit = (office) => {
+        setIsCreating(false);
+        setEditingOffice(office);
+        setIsModalOpen(true);
+    };
+
+    const handleSave = async (officeData) => {
+        try {
+            if (isCreating) {
+                await addDoc(collectionRef, officeData);
+            } else {
+                const officeRef = doc(collectionRef, editingOffice.id);
+                await updateDoc(officeRef, officeData);
+            }
+            setIsModalOpen(false);
+            setEditingOffice(null);
+        } catch (err) {
+            console.error("Failed to save office:", err);
+            setError('검사소 정보 저장에 실패했습니다.');
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (window.confirm('정말로 이 검사소를 삭제하시겠습니까?')) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/inspection_offices`, id));
+            } catch (err) {
+                console.error("Failed to delete office:", err);
+                setError('검사소 삭제에 실패했습니다.');
+            }
+        }
+    };
+
+    if (isLoading) return <div className="text-center">검사소 정보를 불러오는 중...</div>;
+    if (error) return <div className="text-center text-red-500">{error}</div>;
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">검사소 관리</h2>
+                <button onClick={handleCreate} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
+                    신규 검사소 추가
+                </button>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">검사소명</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">주소</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">연락처</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">좌표</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {offices.map(office => (
+                            <tr key={office.id}>
+                                <td className="px-4 py-2 whitespace-nowrap">{office.name}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">{office.address}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">{office.contact}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">{office.coordinates}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">
+                                    <button onClick={() => handleEdit(office)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
+                                    <button onClick={() => handleDelete(office.id)} className="text-red-600 hover:text-red-900">삭제</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            {isModalOpen && (
+                <OfficeEditModal
+                    office={editingOffice}
+                    onSave={handleSave}
+                    onClose={() => setIsModalOpen(false)}
+                    isCreating={isCreating}
+                />
+            )}
+        </div>
+    );
+}
+
+function OfficeEditModal({ office, onSave, onClose, isCreating }) {
+    const [formData, setFormData] = useState(office);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(formData);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+                <h2 className="text-xl font-bold mb-6">{isCreating ? '신규 검사소 추가' : '검사소 정보 수정'}</h2>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="검사소명" className="w-full p-2 border rounded"/>
+                    <input type="text" name="address" value={formData.address} onChange={handleChange} placeholder="주소" className="w-full p-2 border rounded"/>
+                    <input type="text" name="contact" value={formData.contact} onChange={handleChange} placeholder="연락처" className="w-full p-2 border rounded"/>
+                    <input type="text" name="coordinates" value={formData.coordinates} onChange={handleChange} placeholder="좌표 (e.g., 37.5665, 126.9780)" className="w-full p-2 border rounded"/>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+function AnalysisAgencyManagement() {
+    const [agencies, setAgencies] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingAgency, setEditingAgency] = useState(null);
+    const [isCreating, setIsCreating] = useState(false);
+
+    const collectionRef = collection(db, `/artifacts/${appId}/public/data/analysis_agencies`);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collectionRef, 
+            (snapshot) => {
+                const agenciesData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setAgencies(agenciesData);
+                setIsLoading(false);
+            }, 
+            (err) => {
+                console.error("Failed to fetch agencies:", err);
+                setError('분석기관 정보를 불러오는 데 실패했습니다.');
+                setIsLoading(false);
+            }
+        );
+        return () => unsubscribe();
+    }, []);
+
+    const handleCreate = () => {
+        setIsCreating(true);
+        setEditingAgency({ name: '', contact: '' });
+        setIsModalOpen(true);
+    };
+
+    const handleEdit = (agency) => {
+        setIsCreating(false);
+        setEditingAgency(agency);
+        setIsModalOpen(true);
+    };
+
+    const handleSave = async (agencyData) => {
+        try {
+            if (isCreating) {
+                await addDoc(collectionRef, agencyData);
+            } else {
+                const agencyRef = doc(collectionRef, editingAgency.id);
+                await updateDoc(agencyRef, agencyData);
+            }
+            setIsModalOpen(false);
+            setEditingAgency(null);
+        } catch (err) {
+            console.error("Failed to save agency:", err);
+            setError('분석기관 정보 저장에 실패했습니다.');
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (window.confirm('정말로 이 분석기관을 삭제하시겠습니까?')) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/analysis_agencies`, id));
+            } catch (err) {
+                console.error("Failed to delete agency:", err);
+                setError('분석기관 삭제에 실패했습니다.');
+            }
+        }
+    };
+
+    if (isLoading) return <div className="text-center">분석기관 정보를 불러오는 중...</div>;
+    if (error) return <div className="text-center text-red-500">{error}</div>;
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">분석기관 관리</h2>
+                <button onClick={handleCreate} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
+                    신규 분석기관 추가
+                </button>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">분석기관명</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">연락처</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {agencies.map(agency => (
+                            <tr key={agency.id}>
+                                <td className="px-4 py-2 whitespace-nowrap">{agency.name}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">{agency.contact}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">
+                                    <button onClick={() => handleEdit(agency)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
+                                    <button onClick={() => handleDelete(agency.id)} className="text-red-600 hover:text-red-900">삭제</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            {isModalOpen && (
+                <AgencyEditModal
+                    agency={editingAgency}
+                    onSave={handleSave}
+                    onClose={() => setIsModalOpen(false)}
+                    isCreating={isCreating}
+                />
+            )}
+        </div>
+    );
+}
+
+function AgencyEditModal({ agency, onSave, onClose, isCreating }) {
+    const [formData, setFormData] = useState(agency);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(formData);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+                <h2 className="text-xl font-bold mb-6">{isCreating ? '신규 분석기관 추가' : '분석기관 정보 수정'}</h2>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="분석기관명" className="w-full p-2 border rounded"/>
+                    <input type="text" name="contact" value={formData.contact} onChange={handleChange} placeholder="연락처" className="w-full p-2 border rounded"/>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+function EquipmentManagement() {
+    const [equipment, setEquipment] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingEquipment, setEditingEquipment] = useState(null);
+    const [isCreating, setIsCreating] = useState(false);
+
+    const collectionRef = collection(db, `/artifacts/${appId}/public/data/equipment`);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collectionRef, 
+            (snapshot) => {
+                const equipmentData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setEquipment(equipmentData);
+                setIsLoading(false);
+            }, 
+            (err) => {
+                console.error("Failed to fetch equipment:", err);
+                setError('장비 정보를 불러오는 데 실패했습니다.');
+                setIsLoading(false);
+            }
+        );
+        return () => unsubscribe();
+    }, []);
+
+    const handleCreate = () => {
+        setIsCreating(true);
+        setEditingEquipment({ code: '', type: '', model: '', manufacturer: '', purchaseDate: '' });
+        setIsModalOpen(true);
+    };
+
+    const handleEdit = (item) => {
+        setIsCreating(false);
+        setEditingEquipment(item);
+        setIsModalOpen(true);
+    };
+
+    const handleSave = async (equipmentData) => {
+        try {
+            if (isCreating) {
+                await addDoc(collectionRef, equipmentData);
+            } else {
+                const equipmentRef = doc(collectionRef, editingEquipment.id);
+                await updateDoc(equipmentRef, equipmentData);
+            }
+            setIsModalOpen(false);
+            setEditingEquipment(null);
+        } catch (err) {
+            console.error("Failed to save equipment:", err);
+            setError('장비 정보 저장에 실패했습니다.');
+        }
+    };
+
+    const handleDelete = async (id) => {
+        if (window.confirm('정말로 이 장비를 삭제하시겠습니까?')) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/equipment`, id));
+            } catch (err) {
+                console.error("Failed to delete equipment:", err);
+                setError('장비 삭제에 실패했습니다.');
+            }
+        }
+    };
+
+    if (isLoading) return <div className="text-center">장비 정보를 불러오는 중...</div>;
+    if (error) return <div className="text-center text-red-500">{error}</div>;
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">장비이력 관리</h2>
+                <button onClick={handleCreate} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
+                    신규 장비 추가
+                </button>
+            </div>
+            <div className="overflow-x-auto">
+                <table className="min-w-full divide-y divide-gray-200">
+                    <thead className="bg-gray-50">
+                        <tr>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">장비코드</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">장비유형</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">모델</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">제조사</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">구매일</th>
+                            <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
+                        </tr>
+                    </thead>
+                    <tbody className="bg-white divide-y divide-gray-200">
+                        {equipment.map(item => (
+                            <tr key={item.id}>
+                                <td className="px-4 py-2 whitespace-nowrap">{item.code}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">{item.type}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">{item.model}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">{item.manufacturer}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">{item.purchaseDate}</td>
+                                <td className="px-4 py-2 whitespace-nowrap">
+                                    <button onClick={() => handleEdit(item)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
+                                    <button onClick={() => handleDelete(item.id)} className="text-red-600 hover:text-red-900">삭제</button>
+                                </td>
+                            </tr>
+                        ))}
+                    </tbody>
+                </table>
+            </div>
+            {isModalOpen && (
+                <EquipmentEditModal
+                    equipment={editingEquipment}
+                    onSave={handleSave}
+                    onClose={() => setIsModalOpen(false)}
+                    isCreating={isCreating}
+                />
+            )}
+        </div>
+    );
+}
+
+function EquipmentEditModal({ equipment, onSave, onClose, isCreating }) {
+    const [formData, setFormData] = useState(equipment);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(formData);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-lg">
+                <h2 className="text-xl font-bold mb-6">{isCreating ? '신규 장비 추가' : '장비 정보 수정'}</h2>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    <input type="text" name="code" value={formData.code} onChange={handleChange} placeholder="장비코드" className="w-full p-2 border rounded"/>
+                    <input type="text" name="type" value={formData.type} onChange={handleChange} placeholder="장비유형" className="w-full p-2 border rounded"/>
+                    <input type="text" name="model" value={formData.model} onChange={handleChange} placeholder="모델" className="w-full p-2 border rounded"/>
+                    <input type="text" name="manufacturer" value={formData.manufacturer} onChange={handleChange} placeholder="제조사" className="w-full p-2 border rounded"/>
+                    <input type="date" name="purchaseDate" value={formData.purchaseDate} onChange={handleChange} placeholder="구매일" className="w-full p-2 border rounded"/>
+                    <div className="flex justify-end gap-4 pt-4">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">저장</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    );
+}
+
+function UserTable({ users, onEdit, onDelete }) {
+    return (
+        <div className="overflow-x-auto">
+            <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                    <tr>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">이름</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">이메일</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">기관</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">직급</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">권한</th>
+                        <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase">관리</th>
+                    </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                    {users.map(user => (
+                        <tr key={user.id}>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm font-medium text-gray-900">{user.name}</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{user.email}</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{user.organization}</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{user.position}</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm text-gray-700">{user.qualificationLevel}</td>
+                            <td className="px-4 py-2 whitespace-nowrap text-sm font-medium">
+                                <button onClick={() => onEdit(user)} className="text-indigo-600 hover:text-indigo-900 mr-4">수정</button>
+                                <button onClick={() => onDelete(user.id)} className="text-red-600 hover:text-red-900">삭제</button>
+                            </td>
+                        </tr>
+                    ))}
+                </tbody>
+            </table>
+        </div>
+    );
+}
+
+function UserManagement() {
+    const [users, setUsers] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [isModalOpen, setIsModalOpen] = useState(false);
+    const [editingUser, setEditingUser] = useState(null);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [isCreatingUser, setIsCreatingUser] = useState(false);
+
+    const collectionRef = collection(db, `/artifacts/${appId}/public/data/users`);
+
+    useEffect(() => {
+        const unsubscribe = onSnapshot(collectionRef, 
+            (snapshot) => {
+                const usersData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                setUsers(usersData);
+                setIsLoading(false);
+            }, 
+            (err) => {
+                console.error("Failed to fetch users:", err);
+                setError('사용자 정보를 불러오는 데 실패했습니다.');
+                setIsLoading(false);
+            }
+        );
+        return () => unsubscribe();
+    }, [collectionRef]);
+
+    const handleCreateUser = () => {
+        setIsCreatingUser(true);
+        setEditingUser({
+            name: '',
+            email: '',
+            organization: '',
+            position: '',
+            qualificationLevel: '시료채취원',
+            contact: '',
+            inspectionOffice: [],
+            finalEducation: '',
+            major: '',
+            analysisAgencies: [],
+            trainingHistory: [],
+            workExperience: [],
+        });
+        setIsModalOpen(true);
+    };
+    
+    const handleEditUser = (user) => {
+        setIsCreatingUser(false);
+        setEditingUser(user);
+        setIsModalOpen(true);
+    };
+
+    const handleSaveUser = async (userData) => {
+        try {
+            if (isCreatingUser) {
+                const newUserRef = doc(collectionRef);
+                await setDoc(newUserRef, { ...userData, uid: newUserRef.id });
+
+            } else {
+                const userRef = doc(collectionRef, editingUser.id);
+                await updateDoc(userRef, userData);
+            }
+            setIsModalOpen(false);
+            setEditingUser(null);
+        } catch (err) {
+            console.error("Failed to save user:", err);
+            setError('사용자 정보 저장에 실패했습니다.');
+        }
+    };
+
+    const handleDeleteUser = async (userId) => {
+        if (window.confirm('정말로 이 사용자를 삭제하시겠습니까?')) {
+            try {
+                await deleteDoc(doc(db, `/artifacts/${appId}/public/data/users`, userId));
+            } catch (err) {
+                console.error("Failed to delete user:", err);
+                setError('사용자 삭제에 실패했습니다.');
+            }
+        }
+    };
+
+    const filteredUsers = users.filter(user =>
+        Object.values(user).some(value =>
+            String(value).toLowerCase().includes(searchTerm.toLowerCase())
+        )
+    );
+
+    if (isLoading) return <div className="text-center">사용자 정보를 불러오는 중...</div>;
+    if (error) return <div className="text-center text-red-500">{error}</div>;
+
+    return (
+        <div className="bg-white p-6 rounded-lg shadow-md">
+            <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold">회원관리</h2>
+                <button onClick={handleCreateUser} className="bg-blue-600 text-white font-bold py-2 px-4 rounded-lg hover:bg-blue-700">
+                    신규 회원 생성
+                </button>
+            </div>
+            <input
+                type="text"
+                placeholder="검색..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full p-2 border rounded-md mb-4"
+            />
+            <UserTable users={filteredUsers} onEdit={handleEditUser} onDelete={handleDeleteUser} />
+            {isModalOpen && (
+                <UserEditModal
+                    user={editingUser}
+                    onSave={handleSaveUser}
+                    onClose={() => setIsModalOpen(false)}
+                    isCreating={isCreatingUser}
+                />
+            )}
+        </div>
+    );
+}
+
+function UserEditModal({ user, onSave, onClose, isCreating }) {
+    const [formData, setFormData] = useState(user);
+    const [allOffices, setAllOffices] = useState([]);
+    const [allAgencies, setAllAgencies] = useState([]);
+
+    useEffect(() => {
+        const fetchOffices = async () => {
+            const officesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`));
+            setAllOffices(officesSnapshot.docs.map(doc => doc.data().name));
+        };
+        const fetchAgencies = async () => {
+            const agenciesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/analysis_agencies`));
+            setAllAgencies(agenciesSnapshot.docs.map(doc => doc.data().name));
+        };
+        fetchOffices();
+        fetchAgencies();
+    }, []);
+
+    const handleChange = (e) => {
+        const { name, value } = e.target;
+        setFormData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleOfficeChange = (officeName) => {
+        setFormData(prev => {
+            const newOffices = prev.inspectionOffice.includes(officeName)
+                ? prev.inspectionOffice.filter(o => o !== officeName)
+                : [...prev.inspectionOffice, officeName];
+            return { ...prev, inspectionOffice: newOffices };
+        });
+    };
+
+    const handleAgencyChange = (agencyName) => {
+        setFormData(prev => {
+            const newAgencies = prev.analysisAgencies.includes(agencyName)
+                ? prev.analysisAgencies.filter(a => a !== agencyName)
+                : [...prev.analysisAgencies, agencyName];
+            return { ...prev, analysisAgencies: newAgencies };
+        });
+    };
+
+    const handleSubmit = (e) => {
+        e.preventDefault();
+        onSave(formData);
+    };
+
+    return (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+                <h2 className="text-xl font-bold mb-6">{isCreating ? '신규 회원 생성' : '회원 정보 수정'}</h2>
+                <form onSubmit={handleSubmit} className="space-y-4">
+                    {/* Form fields */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <input type="text" name="name" value={formData.name} onChange={handleChange} placeholder="이름" className="p-2 border rounded"/>
+                        <input type="email" name="email" value={formData.email} onChange={handleChange} placeholder="이메일" className="p-2 border rounded" disabled={!isCreating}/>
+                        <input type="text" name="organization" value={formData.organization} onChange={handleChange} placeholder="기관" className="p-2 border rounded"/>
+                        <input type="text" name="position" value={formData.position} onChange={handleChange} placeholder="직급" className="p-2 border rounded"/>
+                        <input type="text" name="contact" value={formData.contact} onChange={handleChange} placeholder="연락처" className="p-2 border rounded"/>
+                        <select name="qualificationLevel" value={formData.qualificationLevel} onChange={handleChange} className="p-2 border rounded">
+                            {['시료채취원', '분석원', '분석보조원', '기술책임자', '해수부(1)', '해수부(2)', '협회관리자', '최고관리자'].map(r => <option key={r} value={r}>{r}</option>)}
+                        </select>
+                        <input type="text" name="finalEducation" value={formData.finalEducation} onChange={handleChange} placeholder="최종학력" className="p-2 border rounded"/>
+                        <input type="text" name="major" value={formData.major} onChange={handleChange} placeholder="전공" className="p-2 border rounded"/>
+                    </div>
+                    
+                    {/* Analysis Agencies Checkboxes */}
+                    <div className="mt-4">
+                        <h3 className="font-semibold mb-2">담당 분석기관</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {allAgencies.map(agency => (
+                                <label key={agency} className="flex items-center space-x-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.analysisAgencies.includes(agency)}
+                                        onChange={() => handleAgencyChange(agency)}
+                                    />
+                                    <span>{agency}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Inspection Offices Checkboxes */}
+                    <div className="mt-4">
+                        <h3 className="font-semibold mb-2">담당 검사소</h3>
+                        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+                            {allOffices.map(office => (
+                                <label key={office} className="flex items-center space-x-2">
+                                    <input
+                                        type="checkbox"
+                                        checked={formData.inspectionOffice.includes(office)}
+                                        onChange={() => handleOfficeChange(office)}
+                                    />
+                                    <span>{office}</span>
+                                </label>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="flex justify-end gap-4 pt-6">
+                        <button type="button" onClick={onClose} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
+                        <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-md">저장</button>
+                    </div>
+                </form>
             </div>
         </div>
     );
