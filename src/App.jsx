@@ -479,6 +479,7 @@ function AnalysisSystemApp({ userData, setAppMode, onLogout }) {
         const props = { 
             db,
             appId,
+            storage,
             userData, 
             location, 
             locationError, 
@@ -2427,15 +2428,68 @@ function WorkLogPage({ userData }) {
 
 
 
-function SampleReceiveScreen({ sample, userData, location, showMessage, setSelectedSample }) {
+function SampleReceiveScreen({ sample, userData, db, appId, storage, location, showMessage, setSelectedSample }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isSigned, setIsSigned] = useState(false);
+    const [signature, setSignature] = useState(null);
+    const [receptionPhotos, setReceptionPhotos] = useState([null, null]); // 시료수령 사진 상태
 
+    // '서명하기' 버튼 클릭 핸들러
+    const handleSign = () => {
+        const now = new Date();
+        const formattedTimestamp =
+          `${String(now.getFullYear()).slice(2)}.` +
+          `${String(now.getMonth() + 1).padStart(2, '0')}.` +
+          `${String(now.getDate()).padStart(2, '0')} ` +
+          `${String(now.getHours()).padStart(2, '0')}:` +
+          `${String(now.getMinutes()).padStart(2, '0')}`;
+
+        setSignature({
+            name: userData.name,
+            timestamp: formattedTimestamp
+        });
+        setIsSigned(true);
+        showMessage({ text: '서명이 완료되었습니다.', type: 'success' });
+    };
+    
+    // 시료수령 사진 업로드 핸들러
+    const handleReceptionPhotoUpload = (event, index) => {
+        const file = event.target.files[0];
+        if (file) {
+            const newPhotos = [...receptionPhotos];
+            newPhotos[index] = file;
+            setReceptionPhotos(newPhotos);
+        }
+    };
+
+    // '수령 확인' 버튼 클릭 시 실행되는 핸들러 (사진 업로드 포함)
     const handleReceive = async () => {
+        if (!isSigned) {
+            showMessage({ text: '서명을 먼저 완료해주세요.', type: 'error' });
+            return;
+        }
         setIsSubmitting(true);
+
+        // --- 시료수령 사진 업로드 로직 ---
+        const receptionPhotoURLs = [];
+        const photosToUpload = receptionPhotos.filter(photo => photo !== null);
+
+        for (const photo of photosToUpload) {
+            const photoRef = ref(storage, `samples/${sample.sampleCode}/reception/${photo.name}`);
+            try {
+                const snapshot = await uploadBytes(photoRef, photo);
+                const downloadURL = await getDownloadURL(snapshot.ref);
+                receptionPhotoURLs.push(downloadURL);
+            } catch (uploadError) {
+                console.error("Reception photo upload failed:", uploadError);
+                showMessage({ text: `수령 사진 업로드에 실패했습니다: ${uploadError.message}`, type: 'error' });
+                setIsSubmitting(false);
+                return;
+            }
+        }
+
         try {
             const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
-            
-            // Get current history or initialize to empty array
             const currentHistory = sample.history || [];
 
             await updateDoc(sampleRef, {
@@ -2446,34 +2500,132 @@ function SampleReceiveScreen({ sample, userData, location, showMessage, setSelec
                         action: '시료수령',
                         actor: userData.name,
                         timestamp: Timestamp.now(),
-                        location: location || null
+                        location: location || null,
+                        signature: signature,
+                        photoURLs: receptionPhotoURLs // 수령 시 사진 URL 배열 추가
                     }
                 ]
             });
-            showMessage("시료가 성공적으로 수령처리되었습니다.");
-            setSelectedSample(null); // Go back to the list
+            showMessage({ text: "시료가 성공적으로 수령처리되어 '시료전처리 대기' 상태로 전환되었습니다.", type: 'success' });
+            setSelectedSample(null);
         } catch (error) {
             console.error("Error updating document: ", error);
-            showMessage("시료 수령 처리에 실패했습니다.");
+            showMessage({ text: "시료 수령 처리에 실패했습니다.", type: 'error' });
         } finally {
             setIsSubmitting(false);
         }
     };
 
+    const receptionHistory = sample.history?.find(h => h.action === '시료접수');
+    const receptionSignature = receptionHistory?.signature;
+    const receptionLocation = receptionHistory?.location;
+
     return (
-        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl mx-auto">
             <h2 className="text-2xl font-bold mb-6">시료 수령 확인</h2>
-            <div className="space-y-4 mb-6">
-                <div><strong>시료 ID:</strong> {sample.sampleCode}</div>
-                <div><strong>품목명:</strong> {sample.itemName}</div>
-                <div><strong>시료량:</strong> {sample.sampleAmount} kg</div>
-                <div><strong>채취일시:</strong> {sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
-                <div><strong>채취장소:</strong> {sample.location}</div>
-                <div><strong>접수자:</strong> {sample.createdBy.name}</div>
+            
+            <div className="space-y-4 mb-6 border-t border-b py-6">
+                {/* ... 시료 정보 및 접수 정보 ... */}
+                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">시료 정보</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                    <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">시료 ID:</strong> <span className="text-gray-800">{sample.sampleCode}</span></div>
+                    <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">시료분류:</strong> <span className="text-gray-800">{sample.type}</span></div>
+                    <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">품목명:</strong> <span className="text-gray-800">{sample.itemName}</span></div>
+                    <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">시료량:</strong> <span className="text-gray-800">{sample.sampleAmount} kg</span></div>
+                    <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">채취일시:</strong> <span className="text-gray-800">{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</span></div>
+                    <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">채취장소:</strong> <span className="text-gray-800">{sample.location}</span></div>
+                    <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">채취자:</strong> <span className="text-gray-800">{sample.sampler}</span></div>
+                    <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">채취자 연락처:</strong> <span className="text-gray-800">{sample.samplerContact}</span></div>
+                    <div className="flex md:col-span-2"><strong className="w-28 text-gray-500 flex-shrink-0">시료채취기관:</strong> <span className="text-gray-800">{sample.samplingOrg}</span></div>
+                    <div className="flex md:col-span-2"><strong className="w-28 text-gray-500 flex-shrink-0">추가정보:</strong> <span className="text-gray-800">{sample.etc}</span></div>
+                </div>
+
+                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4 pt-4">접수 정보</h3>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 text-sm">
+                    <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">접수자:</strong> <span className="text-gray-800">{sample.createdBy.name}</span></div>
+                    <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">접수기관:</strong> <span className="text-gray-800">{sample.lab}</span></div>
+                    <div className="flex md:col-span-2"><strong className="w-28 text-gray-500 flex-shrink-0">접수일시:</strong> <span className="text-gray-800">{sample.createdAt.toDate().toLocaleString()}</span></div>
+                    <div className="flex md:col-span-2 items-start">
+                        <strong className="w-28 text-gray-500 flex-shrink-0">접수자 서명:</strong> 
+                        {receptionSignature ? (
+                            <div className="flex flex-col items-start">
+                                <span className="text-sm font-semibold text-gray-800">{receptionSignature.name}</span>
+                                <span className="text-sm text-gray-600">{receptionSignature.timestamp}</span>
+                            </div>
+                        ) : (
+                            <span className="text-gray-500">서명 정보 없음</span>
+                        )}
+                    </div>
+                    <div className="flex md:col-span-2 items-start">
+                        <strong className="w-28 text-gray-500 flex-shrink-0">채취 위치:</strong> 
+                        {receptionLocation ? (
+                            <a href={`https://www.google.com/maps?q=${receptionLocation.lat},${receptionLocation.lon}`} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
+                                위도: {receptionLocation.lat.toFixed(5)}, 경도: {receptionLocation.lon.toFixed(5)}
+                            </a>
+                        ) : (
+                            <span className="text-gray-500">GPS 정보 없음</span>
+                        )}
+                    </div>
+                </div>
             </div>
-            <div className="flex justify-end gap-4 pt-4 border-t">
+
+            {/* 시료접수사진 표시 */}
+            {sample.photoURLs && sample.photoURLs.length > 0 && (
+                <div className="mb-6">
+                    <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">시료접수사진</h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {sample.photoURLs.map((url, index) => (
+                            <div key={index}>
+                                <a href={url} target="_blank" rel="noopener noreferrer">
+                                    <img src={url} alt={`시료접수사진 ${index + 1}`} className="w-full h-auto max-h-64 object-contain rounded-lg border" />
+                                </a>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* 시료수령 사진 업로드 */}
+            <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">시료수령 사진</h3>
+                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[0, 1].map(index => (
+                        <div key={index} className="border p-3 rounded-md">
+                            <label htmlFor={`reception-photo-${index}`} className="text-sm text-gray-600 mb-1 block">시료수령 사진 {index + 1}</label>
+                            <input type="file" id={`reception-photo-${index}`} accept="image/*" onChange={(e) => handleReceptionPhotoUpload(e, index)} disabled={isSigned || isSubmitting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"/>
+                            {receptionPhotos[index] && (
+                                <p className="mt-2 text-xs text-gray-500 truncate">{receptionPhotos[index].name}</p>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* 수령자 전자결재 */}
+            <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900">수령자 전자결재</h3>
+                <div className="mt-4 space-y-3">
+                    <div className="flex items-center">
+                    {isSigned ? (
+                        <div className="flex flex-col items-start">
+                            <span className="text-sm font-semibold text-gray-800">{signature.name}</span>
+                            <span className="text-sm text-gray-600">{signature.timestamp}</span>
+                        </div>
+                    ) : (
+                        <span className="text-sm text-gray-500">서명 대기 중</span>
+                    )}
+                    </div>
+                    <div className="pt-2">
+                    <button type="button" onClick={handleSign} disabled={isSigned || isSubmitting} className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-200">
+                        서명하기
+                    </button>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex justify-end gap-4 pt-6 mt-6 border-t">
                 <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
-                <button type="button" onClick={handleReceive} disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
+                <button type="button" onClick={handleReceive} disabled={!isSigned || isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400 disabled:cursor-not-allowed">
                     {isSubmitting ? '처리 중...' : '수령 확인'}
                 </button>
             </div>
@@ -2957,12 +3109,22 @@ function SampleAssocReviewScreen({ sample, userData, location, showMessage, setS
     );
 }
 
-function AnalysisManagement({ db, appId, userData, location, locationError, onRetryGps, setPage, initialStep }) {
+function AnalysisManagement({ db, appId, storage, userData, location, locationError, onRetryGps, setPage, initialStep }) {
     const [samplesByStatus, setSamplesByStatus] = useState({});
     const [currentStep, setCurrentStep] = useState(initialStep || null); 
     const [selectedSample, setSelectedSample] = useState(null);
-    const [message, setMessage] = useState('');
+    const [message, setMessage] = useState({ text: '', type: '' }); // 메시지 상태를 객체로 변경
     const [officeList, setOfficeList] = useState([]);
+
+    // 메시지가 표시될 때 3초 후에 자동으로 사라지게 하는 효과 추가
+    useEffect(() => {
+        if (message.text) {
+            const timer = setTimeout(() => {
+                setMessage({ text: '', type: '' });
+            }, 3000);
+            return () => clearTimeout(timer);
+        }
+    }, [message]);
 
     const processSteps = [
         { id: 'receipt', name: '시료접수', component: SampleReception, roles: ['시료채취원', '해수부(1)', '해수부(2)', '분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
@@ -2977,7 +3139,6 @@ function AnalysisManagement({ db, appId, userData, location, locationError, onRe
     ];
 
     useEffect(() => {
-        // 검사소 목록 조회
         const fetchOffices = async () => {
             try {
                 const officesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`));
@@ -2985,15 +3146,14 @@ function AnalysisManagement({ db, appId, userData, location, locationError, onRe
                 setOfficeList(allOffices);
             } catch (error) {
                 console.error("검사소 목록을 불러오는 데 실패했습니다:", error);
-                setMessage("검사소 목록을 불러오는 데 실패했습니다.");
+                setMessage({ text: "검사소 목록 로딩 실패", type: 'error' });
             }
         };
         fetchOffices();
 
-        // 사용자 소속 검사소의 시료 정보 조회
         if (!userData.inspectionOffice || userData.inspectionOffice.length === 0) {
-            setMessage("사용자에게 지정된 검사소가 없어 시료를 조회할 수 없습니다.");
-            setSamplesByStatus({}); // Clear existing data
+            setMessage({ text: "사용자에게 지정된 검사소가 없어 시료를 조회할 수 없습니다.", type: 'error' });
+            setSamplesByStatus({});
             return;
         }
         const q = query(collection(db, `/artifacts/${appId}/public/data/samples`), where("lab", "in", userData.inspectionOffice));
@@ -3004,18 +3164,17 @@ function AnalysisManagement({ db, appId, userData, location, locationError, onRe
                 if (statusCounts[sample.status]) statusCounts[sample.status].push(sample);
             });
             setSamplesByStatus(statusCounts);
-        }, (error) => setMessage("샘플 데이터를 불러오는 데 실패했습니다."));
+        }, (error) => setMessage({ text: "샘플 데이터 로딩에 실패했습니다.", type: 'error' }));
         
         return unsubscribe;
     }, [userData.inspectionOffice]);
     
     const handleStepClick = (stepId) => {
-        setMessage('');
         const stepInfo = processSteps.find(s => s.id === stepId);
         if (!stepInfo) return;
         const canAccess = stepInfo.roles.includes(userData.qualificationLevel) || stepInfo.roles.includes('all');
         if(canAccess) { setCurrentStep(stepId); setSelectedSample(null); } 
-        else { setMessage(`이 단계에 접근할 권한이 없습니다.`); }
+        else { setMessage({ text: `이 단계에 접근할 권한이 없습니다.`, type: 'error' }); }
     };
     
     const renderStepContent = () => {
@@ -3025,7 +3184,7 @@ function AnalysisManagement({ db, appId, userData, location, locationError, onRe
         if (!stepInfo) return null;
 
         const samplesForStep = samplesByStatus[currentStep] || [];
-        const childProps = { userData, location, locationError, onRetryGps, showMessage: setMessage, setPage, setSelectedSample };
+        const childProps = { db, appId, storage, userData, location, locationError, onRetryGps, showMessage: setMessage, setPage, setSelectedSample };
 
         if (selectedSample) {
             const DetailComponent = stepInfo.component;
@@ -3033,7 +3192,7 @@ function AnalysisManagement({ db, appId, userData, location, locationError, onRe
         }
         
         if (currentStep === 'receipt') {
-            return <SampleReception userData={userData} officeList={officeList} db={db} appId={appId} />;
+            return <SampleReception userData={userData} officeList={officeList} db={db} appId={appId} storage={storage} />;
         }
 
         if (currentStep === 'complete') {
@@ -3045,7 +3204,6 @@ function AnalysisManagement({ db, appId, userData, location, locationError, onRe
             );
         }
 
-        // Default list view for other steps
         return (
             <div>
                 <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
@@ -3077,6 +3235,16 @@ function AnalysisManagement({ db, appId, userData, location, locationError, onRe
 
     return (
         <div className="space-y-6">
+            {/* 전역 알림 메시지 표시 영역 추가 */}
+            {message.text && (
+                <div className={`fixed top-10 left-1/2 -translate-x-1/2 z-50 px-6 py-3 rounded-lg shadow-lg text-white ${
+                message.type === 'success' ? 'bg-green-500' :
+                message.type === 'error' ? 'bg-red-500' :
+                'bg-blue-500'
+                }`}>
+                {message.text}
+                </div>
+            )}
             <div className="flex flex-wrap items-center gap-4 p-2">
                 {processSteps.map((step, index) => (
                     <React.Fragment key={step.id}>
@@ -3095,7 +3263,6 @@ function AnalysisManagement({ db, appId, userData, location, locationError, onRe
                     </React.Fragment>
                 ))}
             </div>
-            {message && <p className="p-3 rounded-lg bg-yellow-100 text-yellow-800 text-center">{message}</p>}
             <div className="mt-6">
                 {renderStepContent()}
             </div>

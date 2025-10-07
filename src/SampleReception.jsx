@@ -1,16 +1,20 @@
 // 시료접수하기 기능
 import React, { useState, useEffect } from 'react';
 import { collection, addDoc, Timestamp } from 'firebase/firestore';
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+
+// 시료분류 데이터: 코드와 이름을 모두 포함
+const sampleTypes = [
+  { code: 'FMT', name: '위판장' },
+  { code: 'ACF', name: '양식장' },
+  { code: 'STL', name: '천일염' },
+  { code: 'OMP', name: '기타' },
+];
 
 /**
  * 시료 접수 컴포넌트
- * @param {object} props - 컴포넌트 프로퍼티
- * @param {object} props.userData - 현재 로그인된 사용자 정보
- * @param {string[]} props.officeList - DB에서 가져온 검사소 목록
- * @param {object} props.db - Firestore 데이터베이스 인스턴스
- * @param {string} props.appId - Firebase 앱 ID
  */
-const SampleReception = ({ userData, officeList = [], db, appId }) => {
+const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
   // --- 상태 관리 ---
 
   const currentUser = userData || {
@@ -21,13 +25,13 @@ const SampleReception = ({ userData, officeList = [], db, appId }) => {
   };
 
   const initialFormState = {
-    sampleType: 'FMT',
+    sampleType: sampleTypes[0].name, // 기본값을 '위판장'으로 설정
     isAutoGenerate: true,
     sampleId: '',
     samplingTime: '',
     samplingLocation: '',
     itemName: '',
-    sampleAmount: '', // 시료량 필드 추가
+    sampleAmount: '',
     receptionAgency: '',
     samplingOrg: '',
     additionalInfo: '',
@@ -128,7 +132,6 @@ const SampleReception = ({ userData, officeList = [], db, appId }) => {
     setMessage({ text: '서명이 완료되었습니다.', type: 'success' });
   };
 
-  // '접수하기' 버튼 클릭 시, Firestore에 데이터 저장
   const handleSubmit = async (event) => {
     event.preventDefault();
 
@@ -136,8 +139,8 @@ const SampleReception = ({ userData, officeList = [], db, appId }) => {
       setMessage({ text: '시료접수기관을 목록에서 선택해주세요.', type: 'error' });
       return;
     }
-    if (!db) {
-      setMessage({ text: '데이터베이스 연결에 실패했습니다.', type: 'error' });
+    if (!db || !storage) {
+      setMessage({ text: '데이터베이스 또는 스토리지 연결에 실패했습니다.', type: 'error' });
       return;
     }
 
@@ -146,23 +149,38 @@ const SampleReception = ({ userData, officeList = [], db, appId }) => {
 
     let finalSampleId = formState.sampleId;
     if (formState.isAutoGenerate) {
+      // 선택된 시료분류 이름으로 코드를 찾음
+      const sampleTypeCode = sampleTypes.find(t => t.name === formState.sampleType)?.code || 'OMP';
       const date = new Date();
       const year = String(date.getFullYear()).slice(2);
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
-      const sequence = String(Date.now()).slice(-4); // 중복 확률이 낮은 시퀀스
-      finalSampleId = `${formState.sampleType}-${year}${month}${day}-${sequence}`;
+      const sequence = String(Date.now()).slice(-4);
+      finalSampleId = `${sampleTypeCode}-${year}${month}${day}-${sequence}`;
     }
 
-    // Firestore에 저장할 데이터 모델 구성
+    const photoURLs = [];
+    const photosToUpload = formState.photos.filter(photo => photo !== null);
+
+    for (const photo of photosToUpload) {
+      const photoRef = ref(storage, `samples/${finalSampleId}/${photo.name}`);
+      try {
+        const snapshot = await uploadBytes(photoRef, photo);
+        const downloadURL = await getDownloadURL(snapshot.ref);
+        photoURLs.push(downloadURL);
+      } catch (uploadError) {
+        console.error("Photo upload failed:", uploadError);
+        setMessage({ text: `사진 업로드에 실패했습니다: ${uploadError.message}`, type: 'error' });
+        setIsSubmitting(false);
+        return;
+      }
+    }
+
     const newSample = {
       sampleCode: finalSampleId,
-      status: 'receive_wait', // 상태를 '시료수령 대기'로 설정
+      status: 'receive_wait',
       createdAt: Timestamp.now(),
-      createdBy: {
-        uid: currentUser.uid,
-        name: currentUser.name
-      },
+      createdBy: { uid: currentUser.uid, name: currentUser.name },
       history: [{
         action: '시료접수',
         actor: currentUser.name,
@@ -170,7 +188,7 @@ const SampleReception = ({ userData, officeList = [], db, appId }) => {
         location: formState.location || null,
         signature: formState.signature
       }],
-      type: formState.sampleType,
+      type: formState.sampleType, // DB에는 '위판장'과 같은 전체 이름을 저장
       itemName: formState.itemName,
       sampleAmount: formState.sampleAmount,
       lab: formState.receptionAgency,
@@ -180,12 +198,13 @@ const SampleReception = ({ userData, officeList = [], db, appId }) => {
       sampler: formState.sampler,
       samplerContact: formState.samplerContact,
       etc: formState.additionalInfo,
+      photoURLs: photoURLs,
     };
 
     try {
       await addDoc(collection(db, `/artifacts/${appId}/public/data/samples`), newSample);
       setMessage({ text: `시료 접수가 완료되어 '시료수령 대기' 상태로 전환되었습니다.`, type: 'success' });
-      setFormState(initialFormState); // 폼 초기화
+      setFormState(initialFormState);
     } catch (error) {
       console.error("Error adding document: ", error);
       setMessage({ text: `시료 접수에 실패했습니다: ${error.message}`, type: 'error' });
@@ -217,17 +236,17 @@ const SampleReception = ({ userData, officeList = [], db, appId }) => {
 
       <form onSubmit={handleSubmit} className="space-y-6 bg-white p-8 rounded-lg shadow-md">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* ... other form fields ... */}
+          {/* --- 시료분류 --- */}
           <div>
             <label htmlFor="sampleType" className="block text-sm font-medium text-gray-700">시료분류</label>
             <select id="sampleType" name="sampleType" value={formState.sampleType} onChange={handleChange} disabled={formFieldsDisabled} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100">
-              <option value="FMT">위판장</option>
-              <option value="ACF">양식장</option>
-              <option value="STL">천일염</option>
-              <option value="OMP">기타</option>
+              {sampleTypes.map(type => (
+                <option key={type.code} value={type.name}>{type.name}</option>
+              ))}
             </select>
           </div>
 
+          {/* ... other form fields ... */}
           <div>
             <label htmlFor="sampleId" className="block text-sm font-medium text-gray-700">시료ID</label>
             <div className="mt-1 flex items-center space-x-2">
@@ -254,13 +273,11 @@ const SampleReception = ({ userData, officeList = [], db, appId }) => {
             <input type="text" id="itemName" name="itemName" value={formState.itemName} onChange={handleChange} disabled={formFieldsDisabled} className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"/>
           </div>
 
-          {/* 시료량 필드 추가 */}
           <div>
             <label htmlFor="sampleAmount" className="block text-sm font-medium text-gray-700">시료량 (kg)</label>
             <input type="number" id="sampleAmount" name="sampleAmount" value={formState.sampleAmount} onChange={handleChange} disabled={formFieldsDisabled} className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"/>
           </div>
 
-          {/* 시료접수기관 (DB 연동 및 onBlur 검증) */}
           <div>
             <label htmlFor="receptionAgency" className="block text-sm font-medium text-gray-700">시료접수기관 (검사소)</label>
             <input list="agency-list" id="receptionAgency" name="receptionAgency" value={formState.receptionAgency} onChange={handleChange} onBlur={handleAgencyBlur} disabled={formFieldsDisabled} className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"/>
@@ -269,13 +286,11 @@ const SampleReception = ({ userData, officeList = [], db, appId }) => {
             </datalist>
           </div>
 
-          {/* 추가정보 */}
           <div>
             <label htmlFor="additionalInfo" className="block text-sm font-medium text-gray-700">추가정보</label>
             <textarea id="additionalInfo" name="additionalInfo" value={formState.additionalInfo} onChange={handleChange} disabled={formFieldsDisabled} rows="1" className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"></textarea>
           </div>
 
-          {/* 채취자 */}
           <div>
             <label htmlFor="sampler" className="block text-sm font-medium text-gray-700">채취자</label>
             <div className="mt-1 flex items-center space-x-2">
@@ -287,13 +302,11 @@ const SampleReception = ({ userData, officeList = [], db, appId }) => {
             </div>
           </div>
 
-          {/* 채취자 연락처 */}
           <div>
             <label htmlFor="samplerContact" className="block text-sm font-medium text-gray-700">채취자 연락처</label>
             <input type="text" id="samplerContact" name="samplerContact" value={formState.samplerContact} onChange={handleChange} disabled={!formState.isManualSampler || formFieldsDisabled} className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"/>
           </div>
 
-          {/* 시료채취기관 */}
           <div>
             <label htmlFor="samplingOrg" className="block text-sm font-medium text-gray-700">시료채취기관</label>
             <input type="text" id="samplingOrg" name="samplingOrg" value={formState.samplingOrg} onChange={handleChange} disabled={formFieldsDisabled} className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"/>
