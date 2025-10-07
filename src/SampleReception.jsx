@@ -8,6 +8,7 @@ const sampleTypes = [
   { code: 'FMT', name: '위판장' },
   { code: 'ACF', name: '양식장' },
   { code: 'STL', name: '천일염' },
+  { code: 'SEW', name: '해수' },
   { code: 'OMP', name: '기타' },
 ];
 
@@ -32,6 +33,7 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
     samplingLocation: '',
     itemName: '',
     sampleAmount: '',
+    sampleAmountUnit: 'kg', // 단위 추가
     receptionAgency: '',
     samplingOrg: '',
     additionalInfo: '',
@@ -192,6 +194,7 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
       type: formState.sampleType, // DB에는 '위판장'과 같은 전체 이름을 저장
       itemName: formState.itemName,
       sampleAmount: formState.sampleAmount,
+      sampleAmountUnit: formState.sampleAmountUnit,
       lab: formState.receptionAgency,
       datetime: formState.samplingTime,
       location: formState.samplingLocation,
@@ -276,8 +279,16 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
           </div>
 
           <div>
-            <label htmlFor="sampleAmount" className="block text-sm font-medium text-gray-700">시료량 (kg)</label>
-            <input type="number" id="sampleAmount" name="sampleAmount" value={formState.sampleAmount} onChange={handleChange} disabled={formFieldsDisabled} className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"/>
+            <label htmlFor="sampleAmount" className="block text-sm font-medium text-gray-700">시료량</label>
+            <div className="mt-1 flex rounded-md shadow-sm">
+              <input type="number" id="sampleAmount" name="sampleAmount" value={formState.sampleAmount} onChange={handleChange} disabled={formFieldsDisabled} className="flex-grow block w-full min-w-0 rounded-none rounded-l-md sm:text-sm border-gray-300 disabled:bg-gray-100"/>
+              <select id="sampleAmountUnit" name="sampleAmountUnit" value={formState.sampleAmountUnit} onChange={handleChange} disabled={formFieldsDisabled} className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm disabled:bg-gray-100">
+                <option>kg</option>
+                <option>g</option>
+                <option>L</option>
+                <option>mL</option>
+              </select>
+            </div>
           </div>
 
           <div>

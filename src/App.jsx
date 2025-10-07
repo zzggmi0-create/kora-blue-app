@@ -2433,6 +2433,19 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
     const [isSigned, setIsSigned] = useState(false);
     const [signature, setSignature] = useState(null);
     const [receptionPhotos, setReceptionPhotos] = useState([null, null]); // 시료수령 사진 상태
+    const [analysisClassifications, setAnalysisClassifications] = useState([{ id: 1, type: 'Gamma', quantity: 1 }]);
+
+    const handleClassificationChange = (id, field, value) => {
+        setAnalysisClassifications(prev => prev.map(item => item.id === id ? { ...item, [field]: value } : item));
+    };
+
+    const addClassification = () => {
+        setAnalysisClassifications(prev => [...prev, { id: Date.now(), type: 'Gamma', quantity: 1 }]);
+    };
+
+    const removeClassification = (id) => {
+        setAnalysisClassifications(prev => prev.filter(item => item.id !== id));
+    };
 
     // '서명하기' 버튼 클릭 핸들러
     const handleSign = () => {
@@ -2470,7 +2483,6 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
         }
         setIsSubmitting(true);
 
-        // --- 시료수령 사진 업로드 로직 ---
         const receptionPhotoURLs = [];
         const photosToUpload = receptionPhotos.filter(photo => photo !== null);
 
@@ -2488,29 +2500,56 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
             }
         }
 
-        try {
-            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
-            const currentHistory = sample.history || [];
+        const historyEntry = {
+            action: '시료수령',
+            actor: userData.name,
+            timestamp: Timestamp.now(),
+            location: location || null,
+            signature: signature,
+            photoURLs: receptionPhotoURLs,
+            classifications: analysisClassifications
+        };
 
-            await updateDoc(sampleRef, {
-                status: 'prep_wait',
-                history: [
-                    ...currentHistory,
-                    {
-                        action: '시료수령',
-                        actor: userData.name,
-                        timestamp: Timestamp.now(),
-                        location: location || null,
-                        signature: signature,
-                        photoURLs: receptionPhotoURLs // 수령 시 사진 URL 배열 추가
-                    }
-                ]
+        const suffixMap = {
+            'Gamma': 'GA',
+            'Beta': 'BE',
+            'Alpha': 'AL',
+            'Gross A/B': 'AB'
+        };
+
+        try {
+            const newSamplePromises = [];
+            
+            analysisClassifications.forEach(classification => {
+                const suffix = suffixMap[classification.type];
+                const quantity = parseInt(classification.quantity, 10) || 0;
+
+                for (let i = 1; i <= quantity; i++) {
+                    const newSampleData = {
+                        ...sample, // Spread the original sample data
+                        sampleCode: `${sample.sampleCode}-${suffix}-${i}`,
+                        type: classification.type,
+                        status: 'prep_wait',
+                        history: [...(sample.history || []), historyEntry],
+                    };
+                    delete newSampleData.id; // Remove the original sample's ID
+                    
+                    newSamplePromises.push(addDoc(collection(db, `/artifacts/${appId}/public/data/samples`), newSampleData));
+                }
             });
-            showMessage({ text: "시료가 성공적으로 수령처리되어 '시료전처리 대기' 상태로 전환되었습니다.", type: 'success' });
+
+            await Promise.all(newSamplePromises);
+
+            // Delete the original sample after creating the new ones
+            const originalSampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            await deleteDoc(originalSampleRef);
+
+            showMessage({ text: `${newSamplePromises.length}개의 분석 시료가 생성되어 '시료전처리 대기' 상태로 전환되었습니다.`, type: 'success' });
             setSelectedSample(null);
+
         } catch (error) {
-            console.error("Error updating document: ", error);
-            showMessage({ text: "시료 수령 처리에 실패했습니다.", type: 'error' });
+            console.error("Error processing sample reception: ", error);
+            showMessage({ text: "시료 처리 중 오류가 발생했습니다.", type: 'error' });
         } finally {
             setIsSubmitting(false);
         }
@@ -2605,6 +2644,52 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
                 </div>
             </div>
 
+            {/* 분석 분류 */}
+            <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">분석 분류</h3>
+                <div className="space-y-4">
+                    {analysisClassifications.map((item, index) => (
+                        <div key={item.id} className="flex items-center gap-2">
+                            <select 
+                                value={item.type} 
+                                onChange={(e) => handleClassificationChange(item.id, 'type', e.target.value)}
+                                className="w-1/2 p-2 border border-gray-300 rounded-md"
+                                disabled={isSigned || isSubmitting}
+                            >
+                                <option>Gamma</option>
+                                <option>Beta</option>
+                                <option>Alpha</option>
+                                <option>Gross A/B</option>
+                            </select>
+                            <input 
+                                type="number"
+                                placeholder="분석수량"
+                                value={item.quantity}
+                                onChange={(e) => handleClassificationChange(item.id, 'quantity', e.target.value)}
+                                className="w-1/2 p-2 border border-gray-300 rounded-md"
+                                disabled={isSigned || isSubmitting}
+                            />
+                            <button 
+                                type="button" 
+                                onClick={() => removeClassification(item.id)}
+                                className="px-2 py-1 bg-red-500 text-white rounded-md"
+                                disabled={isSigned || isSubmitting || analysisClassifications.length === 1}
+                            >
+                                삭제
+                            </button>
+                        </div>
+                    ))}
+                </div>
+                <button 
+                    type="button" 
+                    onClick={addClassification}
+                    className="mt-2 px-4 py-2 bg-blue-500 text-white rounded-md"
+                    disabled={isSigned || isSubmitting}
+                >
+                    분류 추가
+                </button>
+            </div>
+
             {/* 수령자 전자결재 */}
             <div className="border-t pt-6">
                 <h3 className="text-lg font-medium text-gray-900">수령자 전자결재</h3>
@@ -2638,16 +2723,7 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
 }
 
 function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage, location, showMessage, setSelectedSample }) {
-    const pretreatmentMethods = ['직접법(균질화)', '건조법', '회화법', '화학적 분해법'];
-    const [pretreatmentGroups, setPretreatmentGroups] = useState([{
-        id: 1,
-        analysisType: 'Gamma',
-        prepMethod: pretreatmentMethods[0],
-        samplePreparationWeight: '',
-        startTime: '',
-        endTime: '',
-        photos: [null, null],
-    }]);
+    const [startTime, setStartTime] = useState('');
     const [isSigned, setIsSigned] = useState(false);
     const [signature, setSignature] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2662,45 +2738,8 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
     };
 
     useEffect(() => {
-        const currentSample = sample || selectedSample;
-        if (currentSample && currentSample.pretreatment) {
-            // If there's existing simple pretreatment data, you might want to adapt it
-            // For now, we'll just initialize with one default group.
-        }
+        // This effect can be removed or repurposed if needed
     }, [sample, selectedSample]);
-
-    const handleGroupChange = (id, field, value) => {
-        setPretreatmentGroups(prev => prev.map(group => 
-            group.id === id ? { ...group, [field]: value } : group
-        ));
-    };
-
-    const handleGroupPhotoUpload = (id, index, file) => {
-        setPretreatmentGroups(prev => prev.map(group => {
-            if (group.id === id) {
-                const newPhotos = [...group.photos];
-                newPhotos[index] = file;
-                return { ...group, photos: newPhotos };
-            }
-            return group;
-        }));
-    };
-
-    const addGroup = () => {
-        setPretreatmentGroups(prev => [...prev, {
-            id: Date.now(),
-            analysisType: 'Gamma',
-            prepMethod: pretreatmentMethods[0],
-            samplePreparationWeight: '',
-            startTime: '',
-            endTime: '',
-            photos: [null, null],
-        }]);
-    };
-
-    const removeGroup = (id) => {
-        setPretreatmentGroups(prev => prev.filter(group => group.id !== id));
-    };
 
     const handleSign = () => {
         const now = new Date();
@@ -2721,57 +2760,31 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
             showMessage({ text: '서명을 먼저 완료해주세요.', type: 'error' });
             return;
         }
-        
-        for (const group of pretreatmentGroups) {
-            if (!group.startTime || !group.endTime) {
-                showMessage({ text: "각 그룹의 시작시간과 종료시간은 필수 항목입니다.", type: 'error' });
-                return;
-            }
+        if (!startTime) {
+            showMessage({ text: "시작시간은 필수 항목입니다.", type: 'error' });
+            return;
         }
         setIsSubmitting(true);
 
         const currentSample = sample || selectedSample;
-        const processedGroups = [];
-
-        for (const group of pretreatmentGroups) {
-            const photoURLs = [];
-            const photosToUpload = group.photos.filter(p => p !== null);
-
-            for (const photo of photosToUpload) {
-                const photoRef = ref(storage, `samples/${currentSample.sampleCode}/prep/${Date.now()}_${photo.name}`);
-                try {
-                    const snapshot = await uploadBytes(photoRef, photo);
-                    const downloadURL = await getDownloadURL(snapshot.ref);
-                    photoURLs.push(downloadURL);
-                } catch (uploadError) {
-                    showMessage({ text: `사진 업로드 실패: ${uploadError.message}`, type: 'error' });
-                    setIsSubmitting(false);
-                    return;
-                }
-            }
-            
-            // eslint-disable-next-line no-unused-vars
-            const { photos, ...groupData } = group;
-            processedGroups.push({ ...groupData, photoURLs });
-        }
 
         try {
             const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, currentSample.id);
             const currentHistory = currentSample.history || [];
             await updateDoc(sampleRef, {
-                status: 'analysis_wait',
+                status: 'prepping',
                 history: [
                     ...currentHistory,
                     {
                         action: '시료전처리',
                         actor: userData.name,
                         timestamp: Timestamp.now(),
-                        details: { pretreatmentGroups: processedGroups },
+                        details: { startTime },
                         signature: signature,
                     }
                 ]
             });
-            showMessage({ text: "시료 전처리가 완료되어 '분석대기' 상태로 전환되었습니다.", type: 'success' });
+            showMessage({ text: "시료 전처리가 시작되어 '전처리중' 상태로 전환되었습니다.", type: 'success' });
             setSelectedSample(null);
         } catch (error) {
             console.error("Error updating document: ", error);
@@ -2888,76 +2901,47 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
                 )}
             </div>
 
-                        {/* --- 전처리 정보 입력 폼 --- */}
-                        <div className="mb-6">
-                            <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">전처리 정보 입력</h3>
-                            <div className="space-y-6">
-                                {pretreatmentGroups.map((group, groupIndex) => (
-                                                            <div key={group.id} className="p-4 border rounded-lg relative">
-                                                                <h4 className="font-semibold mb-3">분석 시료 #{groupIndex + 1}</h4>
-                                                                <div className="space-y-4">
-                                                                    <div>
-                                                                        <label className="block text-sm font-medium text-gray-700">분석 종류</label>
-                                                                        <select value={group.analysisType} onChange={(e) => handleGroupChange(group.id, 'analysisType', e.target.value)} disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100">
-                                                                            <option value="Gamma">Gamma</option>
-                                                                            <option value="Beta">Beta</option>
-                                                                            <option value="Alpha">Alpha</option>
-                                                                        </select>
-                                                                    </div>                                            <div>
-                                                <label className="block text-sm font-medium text-gray-700">전처리 방법</label>
-                                                <select value={group.prepMethod} onChange={(e) => handleGroupChange(group.id, 'prepMethod', e.target.value)} disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100">
-                                                    {pretreatmentMethods.map(method => <option key={method} value={method}>{method}</option>)}
-                                                </select>
-                                            </div>
+                                    {/* --- 전처리 정보 입력 폼 --- */}
+
+                                    <div className="mb-6">
+
+                                        <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">전처리 정보 입력</h3>
+
+                                        <div className="space-y-4 p-4 border rounded-lg">
+
                                             <div>
-                                                <label className="block text-sm font-medium text-gray-700">시료조제무게 (kg)</label>
-                                                <input type="number" value={group.samplePreparationWeight} onChange={(e) => handleGroupChange(group.id, 'samplePreparationWeight', e.target.value)} disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
+
+                                                <span className="block text-sm font-medium text-gray-700">분석 종류</span>
+
+                                                <p className="mt-1 text-lg font-semibold text-gray-900">{currentSample.type}</p>
+
                                             </div>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700">시작시간</label>
-                                                    <input type="datetime-local" value={group.startTime} onChange={(e) => handleGroupChange(group.id, 'startTime', e.target.value)} required disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
-                                                </div>
-                                                <div>
-                                                    <label className="block text-sm font-medium text-gray-700">종료시간</label>
-                                                    <input type="datetime-local" value={group.endTime} onChange={(e) => handleGroupChange(group.id, 'endTime', e.target.value)} required disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
-                                                </div>
-                                            </div>
+
                                             <div>
-                                                <h5 className="text-sm font-medium text-gray-700 mb-2">전처리 사진 (최대 2건)</h5>
-                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                                    {[0, 1].map(index => (
-                                                        <div key={index} className="border p-3 rounded-md">
-                                                            <label htmlFor={`prep-photo-${group.id}-${index}`} className="text-sm text-gray-600 mb-1 block">사진 {index + 1}</label>
-                                                            <input type="file" id={`prep-photo-${group.id}-${index}`} accept="image/*" onChange={(e) => handleGroupPhotoUpload(group.id, index, e.target.files[0])} disabled={isSigned || isSubmitting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"/>
-                                                            {group.photos[index] && (
-                                                                <div className="mt-2">
-                                                                    <img src={URL.createObjectURL(group.photos[index])} alt={`사진 ${index + 1} 미리보기`} className="w-full h-32 object-cover rounded-md"/>
-                                                                    <p className="mt-2 text-xs text-gray-500 truncate">{group.photos[index].name}</p>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    ))}
-                                                </div>
+
+                                                <label className="block text-sm font-medium text-gray-700">시작시간</label>
+
+                                                <input 
+
+                                                    type="datetime-local" 
+
+                                                    value={startTime} 
+
+                                                    onChange={(e) => setStartTime(e.target.value)} 
+
+                                                    required 
+
+                                                    disabled={isSigned || isSubmitting} 
+
+                                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"
+
+                                                />
+
                                             </div>
+
                                         </div>
-                                        {pretreatmentGroups.length > 1 && (
-                                            <button type="button" onClick={() => removeGroup(group.id)} disabled={isSigned || isSubmitting} className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 w-8 h-8 flex items-center justify-center hover:bg-red-600">
-                                                X
-                                            </button>
-                                        )}
+
                                     </div>
-                                ))}
-                            </div>
-                            <button type="button" onClick={addGroup} disabled={isSigned || isSubmitting} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">
-                                전처리 그룹 추가
-                            </button>
-                        </div>
-            
-                        {/* --- 전처리 사진 업로드 --- */}
-                        <div className="mb-6" style={{display: 'none'}}>
-                            {/* This section is now part of the dynamic groups, so we hide the old one. */}
-                        </div>
             {/* --- 전처리 담당자 전자결재 --- */}
             <div className="border-t pt-6">
                 <h3 className="text-lg font-medium text-gray-900">전처리 담당자 전자결재</h3>
@@ -2983,7 +2967,7 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
             <div className="flex justify-end gap-4 pt-6 mt-6 border-t">
                 <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
                 <button type="button" onClick={handleComplete} disabled={!isSigned || isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400 disabled:cursor-not-allowed">
-                    {isSubmitting ? '처리 중...' : '전처리 완료'}
+                    {isSubmitting ? '처리 중...' : '전처리 시작'}
                 </button>
             </div>
         </div>
@@ -3073,6 +3057,260 @@ function SampleAnalysisScreen({ sample, userData, location, showMessage, setSele
                     </button>
                 </div>
             </form>
+        </div>
+    );
+}
+
+function SamplePreppingScreen({ sample, userData, location, showMessage, setSelectedSample }) {
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [preparedWeight, setPreparedWeight] = useState('');
+    const [preparedWeightUnit, setPreparedWeightUnit] = useState('kg');
+    const [prepPhotos, setPrepPhotos] = useState([null, null]);
+    const [isSigned, setIsSigned] = useState(false);
+    const [signature, setSignature] = useState(null);
+    const [endTime, setEndTime] = useState('');
+    const [openSections, setOpenSections] = useState([]);
+
+    const toggleSection = (sectionName) => {
+        setOpenSections(prev => 
+            prev.includes(sectionName) 
+                ? prev.filter(s => s !== sectionName) 
+                : [...prev, sectionName]
+        );
+    };
+
+    const handlePhotoUpload = (event, index) => {
+        const file = event.target.files[0];
+        if (file) {
+            const newPhotos = [...prepPhotos];
+            newPhotos[index] = file;
+            setPrepPhotos(newPhotos);
+        }
+    };
+
+    const handleSign = () => {
+        const now = new Date();
+        const formattedTimestamp =
+          `${String(now.getFullYear()).slice(2)}.` +
+          `${String(now.getMonth() + 1).padStart(2, '0')}.` +
+          `${String(now.getDate()).padStart(2, '0')} ` +
+          `${String(now.getHours()).padStart(2, '0')}:` +
+          `${String(now.getMinutes()).padStart(2, '0')}`;
+
+        setSignature({ name: userData.name, timestamp: formattedTimestamp });
+        setIsSigned(true);
+        showMessage({ text: '서명이 완료되었습니다.', type: 'success' });
+    };
+
+    const handleComplete = async () => {
+        if (!isSigned) {
+            showMessage({ text: '서명을 먼저 완료해주세요.', type: 'error' });
+            return;
+        }
+        if (!endTime) {
+            showMessage({ text: '전처리 종료 시간을 입력해주세요.', type: 'error' });
+            return;
+        }
+        setIsSubmitting(true);
+
+        const photoURLs = [];
+        const photosToUpload = prepPhotos.filter(p => p !== null);
+        for (const photo of photosToUpload) {
+            const photoRef = ref(storage, `samples/${sample.sampleCode}/prep_done/${Date.now()}_${photo.name}`);
+            try {
+                const snapshot = await uploadBytes(photoRef, photo);
+                const downloadURL = await getDownloadURL(snapshot.ref);
+                photoURLs.push(downloadURL);
+            } catch (uploadError) {
+                showMessage({ text: `완료 사진 업로드 실패: ${uploadError.message}`, type: 'error' });
+                setIsSubmitting(false);
+                return;
+            }
+        }
+
+        try {
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
+            const currentHistory = sample.history || [];
+            await updateDoc(sampleRef, {
+                status: 'analysis_wait',
+                history: [
+                    ...currentHistory,
+                    {
+                        action: '전처리완료',
+                        actor: userData.name,
+                        timestamp: Timestamp.now(),
+                        location: location || null,
+                        details: {
+                            preparedWeight,
+                            preparedWeightUnit,
+                            endTime
+                        },
+                        photoURLs: photoURLs,
+                        signature: signature,
+                    }
+                ]
+            });
+            showMessage("전처리가 완료되었습니다.");
+            setSelectedSample(null);
+        } catch (error) {
+            console.error("Error updating document: ", error);
+            showMessage("전처리 완료 처리에 실패했습니다.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
+
+    const receptionHistory = sample.history?.find(h => h.action === '시료접수');
+    const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+    const prepStartEntry = sample.history?.find(h => h.action === '시료전처리');
+
+    const renderDetailRow = (label, value) => {
+        if (value === null || value === undefined || value === '') return null;
+        return (
+            <div className="flex border-t py-2">
+                <strong className="w-32 text-gray-500 flex-shrink-0">{label}:</strong>
+                <span className="text-gray-800 break-all">{value}</span>
+            </div>
+        );
+    };
+
+    const renderHistorySection = (title, data, photos) => {
+        const isOpen = openSections.includes(title);
+        return (
+            <div className="border rounded-md">
+                <button onClick={() => toggleSection(title)} className="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100">
+                    <span className="font-semibold">{title} 정보</span>
+                    <span>{isOpen ? '▲' : '▼'}</span>
+                </button>
+                {isOpen && (
+                    <div className="p-4 border-t text-sm">
+                        {data.map(item => renderDetailRow(item.label, item.value))}
+                        {photos && photos.length > 0 && (
+                            <div className="pt-2">
+                                <strong className="w-32 text-gray-500 flex-shrink-0">사진:</strong>
+                                <div className="grid grid-cols-2 gap-4 mt-2">
+                                    {photos.map((url, index) => (
+                                        <a key={index} href={url} target="_blank" rel="noopener noreferrer">
+                                            <img src={url} alt={`${title} 사진 ${index + 1}`} className="w-full h-auto max-h-48 object-contain rounded-lg border"/>
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+
+    const receptionData = [
+        { label: '시료 ID', value: sample.sampleCode },
+        { label: '품목명', value: sample.itemName },
+        { label: '시료분류', value: sample.type },
+        { label: '시료량', value: `${sample.sampleAmount} ${sample.sampleAmountUnit}` },
+        { label: '채취일시', value: sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A' },
+        { label: '채취장소', value: sample.location },
+        { label: '채취자', value: sample.sampler },
+        { label: '채취자 연락처', value: sample.samplerContact },
+        { label: '채취기관', value: sample.samplingOrg },
+        { label: '접수기관', value: sample.lab },
+        { label: '추가정보', value: sample.etc },
+        { label: '접수 특이사항', value: sample.receptionInfo },
+        { label: '접수자', value: receptionHistory?.actor },
+        { label: '접수일시', value: receptionHistory?.timestamp.toDate().toLocaleString() },
+        { label: '접수자 서명', value: receptionHistory?.signature ? `${receptionHistory.signature.name} (${receptionHistory.signature.timestamp})` : null },
+    ];
+
+    const receiveData = [
+        { label: '수령자', value: receiveHistory?.actor },
+        { label: '수령일시', value: receiveHistory?.timestamp.toDate().toLocaleString() },
+        { label: '수령자 서명', value: receiveHistory?.signature ? `${receiveHistory.signature.name} (${receiveHistory.signature.timestamp})` : null },
+        { label: '분석 분류', value: (
+            <ul className="list-disc pl-5">
+                {(receiveHistory?.classifications || []).map(c => <li key={c.id}>{c.type}: {c.quantity}개</li>)}
+            </ul>
+        )},
+    ];
+
+    const prepStartData = [
+        { label: '담당자', value: prepStartEntry?.actor },
+        { label: '시작일시', value: prepStartEntry?.details?.startTime ? new Date(prepStartEntry.details.startTime).toLocaleString() : 'N/A' },
+        { label: '서명', value: prepStartEntry?.signature ? `${prepStartEntry.signature.name} (${prepStartEntry.signature.timestamp})` : null },
+    ];
+
+    return (
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">전처리 진행 중 ({sample.sampleCode})</h2>
+            
+            <div className="space-y-2 mb-6">
+                {renderHistorySection('시료접수', receptionData, sample.photoURLs)}
+                {renderHistorySection('시료수령', receiveData, receiveHistory?.photoURLs)}
+                {renderHistorySection('시료전처리 시작', prepStartData, [])}
+            </div>
+
+            <div className="space-y-4 mb-6">
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">전처리 종료 시간</label>
+                    <input type="datetime-local" value={endTime} onChange={(e) => setEndTime(e.target.value)} required disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">시료조제무게</label>
+                    <div className="mt-1 flex rounded-md shadow-sm">
+                        <input type="number" value={preparedWeight} onChange={(e) => setPreparedWeight(e.target.value)} disabled={isSigned || isSubmitting} className="flex-grow block w-full min-w-0 rounded-none rounded-l-md sm:text-sm border-gray-300 disabled:bg-gray-100"/>
+                        <select value={preparedWeightUnit} onChange={(e) => setPreparedWeightUnit(e.target.value)} disabled={isSigned || isSubmitting} className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm disabled:bg-gray-100">
+                            <option>kg</option>
+                            <option>g</option>
+                            <option>L</option>
+                            <option>mL</option>
+                        </select>
+                    </div>
+                </div>
+                <div>
+                    <h5 className="text-sm font-medium text-gray-700 mb-2">전처리완료 사진 (최대 2건)</h5>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        {[0, 1].map(index => (
+                            <div key={index} className="border p-3 rounded-md">
+                                <label htmlFor={`prep-done-photo-${index}`} className="text-sm text-gray-600 mb-1 block">사진 {index + 1}</label>
+                                <input type="file" id={`prep-done-photo-${index}`} accept="image/*" onChange={(e) => handlePhotoUpload(e, index)} disabled={isSigned || isSubmitting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"/>
+                                {prepPhotos[index] && (
+                                    <div className="mt-2">
+                                        <img src={URL.createObjectURL(prepPhotos[index])} alt={`완료사진 ${index + 1} 미리보기`} className="w-full h-32 object-cover rounded-md"/>
+                                        <p className="mt-2 text-xs text-gray-500 truncate">{prepPhotos[index].name}</p>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+
+            <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900">전자결재</h3>
+                <div className="mt-4 space-y-3">
+                    <div className="flex items-center">
+                    {isSigned ? (
+                        <div className="flex flex-col items-start">
+                            <span className="text-sm font-semibold text-gray-800">{signature.name}</span>
+                            <span className="text-sm text-gray-600">{signature.timestamp}</span>
+                        </div>
+                    ) : (
+                        <span className="text-sm text-gray-500">서명 대기 중</span>
+                    )}
+                    </div>
+                    <div className="pt-2">
+                    <button type="button" onClick={handleSign} disabled={isSigned || isSubmitting} className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-200">
+                        서명하기
+                    </button>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex justify-end gap-4 pt-4 mt-6 border-t">
+                <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
+                <button type="button" onClick={handleComplete} disabled={!isSigned || isSubmitting} className="px-4 py-2 bg-green-600 text-white rounded-md disabled:bg-gray-400">
+                    {isSubmitting ? '처리 중...' : '전처리 완료'}
+                </button>
+            </div>
         </div>
     );
 }
@@ -3402,6 +3640,7 @@ function AnalysisManagement({ db, appId, storage, userData, location, locationEr
         { id: 'receipt', name: '시료접수', component: SampleReception, roles: ['시료채취원', '해수부(1)', '해수부(2)', '분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
         { id: 'receive_wait', name: '시료수령 대기', component: SampleReceiveScreen, roles: ['분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
         { id: 'prep_wait', name: '시료전처리 대기', component: SamplePrepScreen, roles: ['분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
+        { id: 'prepping', name: '전처리중', component: SamplePreppingScreen, roles: ['분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
         { id: 'analysis_wait', name: '분석대기', component: SampleAnalysisScreen, roles: ['분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
         { id: 'analyzing', name: '분석중', component: SampleAnalyzingScreen, roles: ['분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
         { id: 'analysis_done', name: '분석완료', component: SampleAnalysisDoneScreen, roles: ['분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
@@ -3476,11 +3715,21 @@ function AnalysisManagement({ db, appId, storage, userData, location, locationEr
             );
         }
 
+        const showAnalysisTypeColumn = ['prep_wait', 'prepping', 'analysis_wait', 'analyzing', 'analysis_done', 'tech_review_wait', 'assoc_review_wait', 'complete'].includes(currentStep);
+        const gridColsClass = showAnalysisTypeColumn ? 'grid-cols-5' : 'grid-cols-4';
+        const analysisTypeColorMap = {
+            'Gamma': 'bg-green-100 text-green-800',
+            'Beta': 'bg-blue-100 text-blue-800',
+            'Alpha': 'bg-yellow-100 text-yellow-800',
+            'Gross A/B': 'bg-purple-100 text-purple-800',
+        };
+
         return (
             <div>
                 <h3 className="text-xl font-bold mb-4">{stepInfo.name} ({samplesForStep.length}건)</h3>
                 <div className="bg-white rounded-lg shadow">
-                    <div className="grid grid-cols-4 gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg text-sm">
+                    <div className={`grid ${gridColsClass} gap-4 p-4 font-semibold border-b bg-gray-50 rounded-t-lg text-sm`}>
+                        {showAnalysisTypeColumn && <div>분석분류</div>}
                         <div>시료ID</div>
                         <div>품목명</div>
                         <div>채취일시</div>
@@ -3496,7 +3745,8 @@ function AnalysisManagement({ db, appId, storage, userData, location, locationEr
                             const lastHistory = sample.history && sample.history.length > 0 ? sample.history[sample.history.length - 1] : null;
                             const lastUpdate = lastHistory ? lastHistory.timestamp.toDate().toLocaleString() : 'N/A';
                             return (
-                                <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className="grid grid-cols-4 gap-4 p-4 text-sm hover:bg-gray-50 cursor-pointer">
+                                <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className={`grid ${gridColsClass} gap-4 p-4 text-sm hover:bg-gray-50 cursor-pointer`}>
+                                    {showAnalysisTypeColumn && <div><span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${analysisTypeColorMap[sample.type] || 'bg-gray-100 text-gray-800'}`}>{sample.type}</span></div>}
                                     <div className="font-medium text-gray-900">{sample.sampleCode}</div>
                                     <div>{sample.itemName}</div>
                                     <div>{sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A'}</div>
