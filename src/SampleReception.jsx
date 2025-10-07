@@ -11,6 +11,14 @@ const sampleTypes = [
   { code: 'OMP', name: '기타' },
 ];
 
+// 전처리방법 데이터
+const pretreatmentMethods = [
+  '직접법(균질화)',
+  '건조법',
+  '회화법',
+  '화학적 분해법',
+];
+
 /**
  * 시료 접수 컴포넌트
  */
@@ -32,9 +40,11 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
     samplingLocation: '',
     itemName: '',
     sampleAmount: '',
+    pretreatment: pretreatmentMethods[0], // 기본값 설정
     receptionAgency: '',
     samplingOrg: '',
     additionalInfo: '',
+    receptionInfo: '', // 시료접수 특이사항 추가
     isManualSampler: false,
     sampler: '',
     samplerContact: '',
@@ -191,6 +201,7 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
       type: formState.sampleType, // DB에는 '위판장'과 같은 전체 이름을 저장
       itemName: formState.itemName,
       sampleAmount: formState.sampleAmount,
+      pretreatment: formState.pretreatment, // 전처리방법 추가
       lab: formState.receptionAgency,
       datetime: formState.samplingTime,
       location: formState.samplingLocation,
@@ -198,6 +209,7 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
       sampler: formState.sampler,
       samplerContact: formState.samplerContact,
       etc: formState.additionalInfo,
+      receptionInfo: formState.receptionInfo, // 시료접수 특이사항 추가
       photoURLs: photoURLs,
     };
 
@@ -279,6 +291,17 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
           </div>
 
           <div>
+            <label htmlFor="pretreatment" className="block text-sm font-medium text-gray-700">전처리방법</label>
+            <select id="pretreatment" name="pretreatment" value={formState.pretreatment} onChange={handleChange} disabled={formFieldsDisabled} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100">
+              {pretreatmentMethods.map(method => (
+                <option key={method} value={method}>{method}</option>
+              ))}
+            </select>
+          </div>
+
+
+
+          <div>
             <label htmlFor="receptionAgency" className="block text-sm font-medium text-gray-700">시료접수기관 (검사소)</label>
             <input list="agency-list" id="receptionAgency" name="receptionAgency" value={formState.receptionAgency} onChange={handleChange} onBlur={handleAgencyBlur} disabled={formFieldsDisabled} className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"/>
             <datalist id="agency-list">
@@ -289,6 +312,11 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
           <div>
             <label htmlFor="additionalInfo" className="block text-sm font-medium text-gray-700">추가정보</label>
             <textarea id="additionalInfo" name="additionalInfo" value={formState.additionalInfo} onChange={handleChange} disabled={formFieldsDisabled} rows="1" className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"></textarea>
+          </div>
+
+          <div>
+            <label htmlFor="receptionInfo" className="block text-sm font-medium text-gray-700">시료접수 특이사항</label>
+            <textarea id="receptionInfo" name="receptionInfo" value={formState.receptionInfo} onChange={handleChange} disabled={formFieldsDisabled} rows="1" className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"></textarea>
           </div>
 
           <div>
@@ -335,7 +363,10 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
                 <label htmlFor={`photo-${index}`} className="text-sm text-gray-600 mb-1 block">시료사진 {index + 1}</label>
                 <input type="file" id={`photo-${index}`} accept="image/*" onChange={(e) => handlePhotoUpload(e, index)} disabled={formFieldsDisabled} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"/>
                 {formState.photos[index] && (
-                  <p className="mt-2 text-xs text-gray-500 truncate">{formState.photos[index].name}</p>
+                  <div className="mt-2">
+                    <img src={URL.createObjectURL(formState.photos[index])} alt={`시료사진 ${index + 1} 미리보기`} className="w-full h-32 object-cover rounded-md"/>
+                    <p className="mt-1 text-xs text-gray-500 truncate">{formState.photos[index].name}</p>
+                  </div>
                 )}
               </div>
             ))}

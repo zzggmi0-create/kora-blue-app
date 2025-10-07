@@ -2545,6 +2545,7 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
                     <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">접수자:</strong> <span className="text-gray-800">{sample.createdBy.name}</span></div>
                     <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">접수기관:</strong> <span className="text-gray-800">{sample.lab}</span></div>
                     <div className="flex md:col-span-2"><strong className="w-28 text-gray-500 flex-shrink-0">접수일시:</strong> <span className="text-gray-800">{sample.createdAt.toDate().toLocaleString()}</span></div>
+                    <div className="flex md:col-span-2"><strong className="w-28 text-gray-500 flex-shrink-0">시료접수 특이사항:</strong> <span className="text-gray-800">{sample.receptionInfo}</span></div>
                     <div className="flex md:col-span-2 items-start">
                         <strong className="w-28 text-gray-500 flex-shrink-0">접수자 서명:</strong> 
                         {receptionSignature ? (
@@ -2594,7 +2595,10 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
                             <label htmlFor={`reception-photo-${index}`} className="text-sm text-gray-600 mb-1 block">시료수령 사진 {index + 1}</label>
                             <input type="file" id={`reception-photo-${index}`} accept="image/*" onChange={(e) => handleReceptionPhotoUpload(e, index)} disabled={isSigned || isSubmitting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"/>
                             {receptionPhotos[index] && (
-                                <p className="mt-2 text-xs text-gray-500 truncate">{receptionPhotos[index].name}</p>
+                                <div className="mt-2">
+                                    <img src={URL.createObjectURL(receptionPhotos[index])} alt={`시료수령 사진 ${index + 1} 미리보기`} className="w-full h-32 object-cover rounded-md"/>
+                                    <p className="mt-2 text-xs text-gray-500 truncate">{receptionPhotos[index].name}</p>
+                                </div>
                             )}
                         </div>
                     ))}
@@ -2633,87 +2637,307 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
     );
 }
 
-function SamplePrepScreen({ sample, userData, location, showMessage, setSelectedSample }) {
+function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage, location, showMessage, setSelectedSample }) {
+    const pretreatmentMethods = ['직접법(균질화)', '건조법', '회화법', '화학적 분해법'];
     const [formData, setFormData] = useState({
-        prepMethod: 'drying',
+        prepMethod: pretreatmentMethods[0],
+        samplePreparationWeight: '',
         startTime: '',
         endTime: '',
         notes: ''
     });
+    const [prepPhotos, setPrepPhotos] = useState([null, null]);
+    const [isSigned, setIsSigned] = useState(false);
+    const [signature, setSignature] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [openSections, setOpenSections] = useState(['시료 정보', '시료수령 정보']); // 모든 섹션을 기본으로 열어둠
+
+    const toggleSection = (section) => {
+        setOpenSections(prev =>
+            prev.includes(section)
+                ? prev.filter(s => s !== section)
+                : [...prev, section]
+        );
+    };
+
+    useEffect(() => {
+        const currentSample = sample || selectedSample;
+        if (currentSample && currentSample.pretreatment) {
+            setFormData(prev => ({ ...prev, prepMethod: currentSample.pretreatment }));
+        }
+    }, [sample, selectedSample]);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
-    const handleSubmit = async (e) => {
-        e.preventDefault();
+    const handlePhotoUpload = (event, index) => {
+        const file = event.target.files[0];
+        if (file) {
+            const newPhotos = [...prepPhotos];
+            newPhotos[index] = file;
+            setPrepPhotos(newPhotos);
+        }
+    };
+
+    const handleSign = () => {
+        const now = new Date();
+        const formattedTimestamp =
+          `${String(now.getFullYear()).slice(2)}.` +
+          `${String(now.getMonth() + 1).padStart(2, '0')}.` +
+          `${String(now.getDate()).padStart(2, '0')} ` +
+          `${String(now.getHours()).padStart(2, '0')}:` +
+          `${String(now.getMinutes()).padStart(2, '0')}`;
+
+        setSignature({ name: userData.name, timestamp: formattedTimestamp });
+        setIsSigned(true);
+        showMessage({ text: '서명이 완료되었습니다.', type: 'success' });
+    };
+
+    const handleComplete = async () => {
+        if (!isSigned) {
+            showMessage({ text: '서명을 먼저 완료해주세요.', type: 'error' });
+            return;
+        }
         if (!formData.startTime || !formData.endTime) {
-            showMessage("시작시간과 종료시간은 필수 항목입니다.");
+            showMessage({ text: "시작시간과 종료시간은 필수 항목입니다.", type: 'error' });
             return;
         }
         setIsSubmitting(true);
+
+        const photoURLs = [];
+        const photosToUpload = prepPhotos.filter(p => p !== null);
+        const currentSample = sample || selectedSample;
+
+        for (const photo of photosToUpload) {
+            const photoRef = ref(storage, `samples/${currentSample.sampleCode}/prep/${photo.name}`);
+            try {
+                const snapshot = await uploadBytes(photoRef, photo);
+                const downloadURL = await getDownloadURL(snapshot.ref);
+                photoURLs.push(downloadURL);
+            } catch (uploadError) {
+                showMessage({ text: `전처리 사진 업로드 실패: ${uploadError.message}`, type: 'error' });
+                setIsSubmitting(false);
+                return;
+            }
+        }
+
         try {
-            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
-            const currentHistory = sample.history || [];
+            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, currentSample.id);
+            const currentHistory = currentSample.history || [];
             await updateDoc(sampleRef, {
                 status: 'analysis_wait',
+                pretreatment: formData.prepMethod,
                 history: [
                     ...currentHistory,
                     {
                         action: '시료전처리',
                         actor: userData.name,
                         timestamp: Timestamp.now(),
-                        location: location || null,
-                        details: formData
+                        details: formData,
+                        photoURLs: photoURLs,
+                        signature: signature,
                     }
                 ]
             });
-            showMessage("시료 전처리가 완료되었습니다.");
+            showMessage({ text: "시료 전처리가 완료되어 '분석대기' 상태로 전환되었습니다.", type: 'success' });
             setSelectedSample(null);
         } catch (error) {
             console.error("Error updating document: ", error);
-            showMessage("시료 전처리 기록에 실패했습니다.");
+            showMessage({ text: "전처리 정보 저장에 실패했습니다.", type: 'error' });
         } finally {
             setIsSubmitting(false);
         }
     };
+    
+    const currentSample = sample || selectedSample;
+
+    if (!currentSample) {
+        return <div className="text-center p-4">시료 정보를 불러오는 중...</div>;
+    }
+    
+    const receptionHistory = currentSample.history?.find(h => h.action === '시료접수');
+    const receiveHistory = currentSample.history?.find(h => h.action === '시료수령');
+
+    const renderHistoryDetails = (item) => {
+        const details = [];
+        if (item.actor) details.push({ label: '수행자', value: item.actor });
+        if (item.timestamp && typeof item.timestamp.toDate === 'function') details.push({ label: '일시', value: item.timestamp.toDate().toLocaleString() });
+        if (item.location && item.location.lat && item.location.lon) details.push({ label: '위치', value: `위도: ${item.location.lat.toFixed(5)}, 경도: ${item.location.lon.toFixed(5)}` });
+        if (item.signature && item.signature.name) details.push({ label: '서명', value: `${item.signature.name} (${item.signature.timestamp})` });
+        if (item.details && typeof item.details === 'object') {
+            Object.entries(item.details).forEach(([key, value]) => {
+                details.push({ label: key, value: String(value) });
+            });
+        }
+
+        return details.map(({ label, value }) => (
+            <div key={label} className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">{label}:</strong> <span className="text-gray-800 break-all">{value}</span></div>
+        ));
+    };
 
     return (
-        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold mb-6">시료 전처리 ({sample.sampleCode})</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">전처리 방법</label>
-                    <select name="prepMethod" value={formData.prepMethod} onChange={handleChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
-                        <option value="drying">건조</option>
-                        <option value="grinding">분쇄</option>
-                        <option value="homogenizing">균질화</option>
-                        <option value="other">기타</option>
-                    </select>
-                </div>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">시작시간</label>
-                        <input type="datetime-local" name="startTime" value={formData.startTime} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">종료시간</label>
-                        <input type="datetime-local" name="endTime" value={formData.endTime} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
-                    </div>
-                </div>
-                <div>
-                    <label className="block text-sm font-medium text-gray-700">특이사항</label>
-                    <textarea name="notes" value={formData.notes} onChange={handleChange} rows="3" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"></textarea>
-                </div>
-                <div className="flex justify-end gap-4 pt-4 border-t">
-                    <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
-                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
-                        {isSubmitting ? '저장 중...' : '전처리 완료'}
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl mx-auto">
+            <h2 className="text-2xl font-bold mb-6">시료 전처리</h2>
+
+            <div className="space-y-2 mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">이전 단계 정보</h3>
+                {/* 섹션 1: 시료 정보 및 접수 */}
+                <div className="border rounded-md">
+                    <button onClick={() => toggleSection('시료 정보')} className="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100 rounded-t-md">
+                        <span className="font-semibold">시료 정보</span>
+                        <span className="transform transition-transform duration-200">{openSections.includes('시료 정보') ? '▲' : '▼'}</span>
                     </button>
+                    {openSections.includes('시료 정보') && (
+                        <div className="p-4 border-t space-y-4">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                                <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">시료 ID:</strong> <span className="text-gray-800">{currentSample.sampleCode || 'N/A'}</span></div>
+                                <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">품목명:</strong> <span className="text-gray-800">{currentSample.itemName || 'N/A'}</span></div>
+                                <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">시료분류:</strong> <span className="text-gray-800">{currentSample.type || 'N/A'}</span></div>
+                                <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">시료량:</strong> <span className="text-gray-800">{currentSample.sampleAmount ? `${currentSample.sampleAmount} kg` : 'N/A'}</span></div>
+                                <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">접수기관:</strong> <span className="text-gray-800">{currentSample.lab || 'N/A'}</span></div>
+                                <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">채취시간:</strong> <span className="text-gray-800">{currentSample.datetime ? new Date(currentSample.datetime).toLocaleString() : 'N/A'}</span></div>
+                                <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">채취장소:</strong> <span className="text-gray-800">{currentSample.location || 'N/A'}</span></div>
+                                <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">채취자:</strong> <span className="text-gray-800">{currentSample.sampler || 'N/A'}</span></div>
+                                <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">채취자 연락처:</strong> <span className="text-gray-800">{currentSample.samplerContact || 'N/A'}</span></div>
+                                <div className="flex"><strong className="w-28 text-gray-500 flex-shrink-0">채취기관:</strong> <span className="text-gray-800">{currentSample.samplingOrg || 'N/A'}</span></div>
+                                <div className="flex md:col-span-2"><strong className="w-28 text-gray-500 flex-shrink-0">추가정보:</strong> <span className="text-gray-800">{currentSample.etc || 'N/A'}</span></div>
+                            </div>
+                            {currentSample.photoURLs && currentSample.photoURLs.length > 0 && (
+                                <div className="mt-4 pt-4 border-t">
+                                    <h4 className="font-semibold text-md mb-2">시료접수 사진</h4>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        {currentSample.photoURLs.map((url, index) => (
+                                            <a key={index} href={url} target="_blank" rel="noopener noreferrer">
+                                                <img src={url} alt={`접수사진 ${index + 1}`} className="w-full h-auto max-h-48 object-contain rounded-lg border"/>
+                                            </a>
+                                        ))}
+                                    </div>
+                                </div>
+                            )}
+                            {receptionHistory && (
+                                <div className="border-t pt-4 mt-4">
+                                    <h4 className="font-semibold text-md mb-2">접수 정보</h4>
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                                        {renderHistoryDetails(receptionHistory)}
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
                 </div>
-            </form>
+
+                {/* 섹션 2: 시료 수령 */}
+                {receiveHistory && (
+                    <div className="border rounded-md">
+                        <button onClick={() => toggleSection('시료수령 정보')} className="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100">
+                            <span className="font-semibold">시료수령 정보</span>
+                            <span className="transform transition-transform duration-200">{openSections.includes('시료수령 정보') ? '▲' : '▼'}</span>
+                        </button>
+                        {openSections.includes('시료수령 정보') && (
+                            <div className="p-4 border-t space-y-4">
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2 text-sm">
+                                    {renderHistoryDetails(receiveHistory)}
+                                </div>
+                                {receiveHistory.photoURLs && receiveHistory.photoURLs.length > 0 && (
+                                    <div className="pt-4 border-t">
+                                        <h4 className="font-semibold text-md mb-2">시료수령 사진</h4>
+                                        <div className="grid grid-cols-2 gap-4">
+                                            {receiveHistory.photoURLs.map((url, index) => (
+                                                <a key={index} href={url} target="_blank" rel="noopener noreferrer">
+                                                    <img src={url} alt={`수령사진 ${index + 1}`} className="w-full h-auto max-h-48 object-contain rounded-lg border"/>
+                                                </a>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+
+            {/* --- 전처리 정보 입력 폼 --- */}
+            <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">전처리 정보 입력</h3>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">전처리 방법</label>
+                        <select name="prepMethod" value={formData.prepMethod} onChange={handleChange} disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100">
+                            {pretreatmentMethods.map(method => (
+                                <option key={method} value={method}>{method}</option>
+                            ))}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">시료조제무게 (kg)</label>
+                        <input type="number" name="samplePreparationWeight" value={formData.samplePreparationWeight} onChange={handleChange} disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">시작시간</label>
+                            <input type="datetime-local" name="startTime" value={formData.startTime} onChange={handleChange} required disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
+                        </div>
+                        <div>
+                            <label className="block text-sm font-medium text-gray-700">종료시간</label>
+                            <input type="datetime-local" name="endTime" value={formData.endTime} onChange={handleChange} required disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
+                        </div>
+                    </div>
+                    <div>
+                        <label className="block text-sm font-medium text-gray-700">특이사항</label>
+                        <textarea name="notes" value={formData.notes} onChange={handleChange} rows="3" disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"></textarea>
+                    </div>
+                </div>
+            </div>
+
+            {/* --- 전처리 사진 업로드 --- */}
+            <div className="mb-6">
+                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">전처리 사진</h3>
+                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {[0, 1].map(index => (
+                        <div key={index} className="border p-3 rounded-md">
+                            <label htmlFor={`prep-photo-${index}`} className="text-sm text-gray-600 mb-1 block">전처리 사진 {index + 1}</label>
+                            <input type="file" id={`prep-photo-${index}`} accept="image/*" onChange={(e) => handlePhotoUpload(e, index)} disabled={isSigned || isSubmitting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"/>
+                            {prepPhotos[index] && (
+                                <div className="mt-2">
+                                    <img src={URL.createObjectURL(prepPhotos[index])} alt={`전처리 사진 ${index + 1} 미리보기`} className="w-full h-32 object-cover rounded-md"/>
+                                    <p className="mt-2 text-xs text-gray-500 truncate">{prepPhotos[index].name}</p>
+                                </div>
+                            )}
+                        </div>
+                    ))}
+                </div>
+            </div>
+
+            {/* --- 전처리 담당자 전자결재 --- */}
+            <div className="border-t pt-6">
+                <h3 className="text-lg font-medium text-gray-900">전처리 담당자 전자결재</h3>
+                <div className="mt-4 space-y-3">
+                    <div className="flex items-center">
+                    {isSigned ? (
+                        <div className="flex flex-col items-start">
+                            <span className="text-sm font-semibold text-gray-800">{signature.name}</span>
+                            <span className="text-sm text-gray-600">{signature.timestamp}</span>
+                        </div>
+                    ) : (
+                        <span className="text-sm text-gray-500">서명 대기 중</span>
+                    )}
+                    </div>
+                    <div className="pt-2">
+                    <button type="button" onClick={handleSign} disabled={isSigned || isSubmitting} className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:bg-gray-200">
+                        서명하기
+                    </button>
+                    </div>
+                </div>
+            </div>
+
+            <div className="flex justify-end gap-4 pt-6 mt-6 border-t">
+                <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
+                <button type="button" onClick={handleComplete} disabled={!isSigned || isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400 disabled:cursor-not-allowed">
+                    {isSubmitting ? '처리 중...' : '전처리 완료'}
+                </button>
+            </div>
         </div>
     );
 }
@@ -3188,7 +3412,7 @@ function AnalysisManagement({ db, appId, storage, userData, location, locationEr
 
         if (selectedSample) {
             const DetailComponent = stepInfo.component;
-            return DetailComponent ? <DetailComponent sample={selectedSample} {...childProps} /> : <p className="text-center mt-10">{stepInfo.name} 상세 화면은 현재 개발 중입니다.</p>;
+            return DetailComponent ? <DetailComponent sample={selectedSample} selectedSample={selectedSample} {...childProps} /> : <p className="text-center mt-10">{stepInfo.name} 상세 화면은 현재 개발 중입니다.</p>;
         }
         
         if (currentStep === 'receipt') {
