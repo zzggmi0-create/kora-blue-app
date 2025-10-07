@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import SampleReception from './SampleReception';
 import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
@@ -2422,141 +2423,7 @@ function WorkLogPage({ userData }) {
     );
 }
 
-function SampleRegistrationForm({ userData, location, showMessage, setCurrentStep, setPage }) {
-    const [formData, setFormData] = useState({
-        itemName: '',
-        sampleAmount: '',
-        type: '위판장',
-        lab: userData.inspectionOffice && userData.inspectionOffice.length > 0 ? userData.inspectionOffice[0] : '',
-        location: '',
-        datetime: '',
-        etc: ''
-    });
-    const [isSubmitting, setIsSubmitting] = useState(false);
-    const [offices, setOffices] = useState([]);
 
-    const sampleTypes = ['위판장', '양식장', '천일염', '기타'];
-
-    useEffect(() => {
-        const fetchOffices = async () => {
-            try {
-                const officesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`));
-                const allOffices = officesSnapshot.docs.map(doc => doc.data().name);
-                setOffices(allOffices);
-                if (allOffices.length > 0 && !formData.lab) {
-                    if (!userData.inspectionOffice || userData.inspectionOffice.length === 0) {
-                         setFormData(prev => ({ ...prev, lab: allOffices[0] }));
-                    }
-                }
-            } catch (error) {
-                showMessage("검사소 목록을 불러오는 데 실패했습니다.");
-            }
-        };
-        fetchOffices();
-    }, [userData.inspectionOffice]);
-
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        if (!formData.itemName || !formData.lab || !formData.datetime) {
-            showMessage("품목명, 접수검사소, 채취일시는 필수 항목입니다.");
-            return;
-        }
-        setIsSubmitting(true);
-        try {
-            const officePrefix = formData.lab.substring(0, 2).toUpperCase();
-            const date = new Date();
-            const year = date.getFullYear().toString().slice(-2);
-            const month = (date.getMonth() + 1).toString().padStart(2, '0');
-            const day = date.getDate().toString().padStart(2, '0');
-            
-            const sequence = Date.now().toString().slice(-4); 
-            const sampleCode = `${officePrefix}${year}${month}${day}-${sequence}`;
-
-            const newSample = {
-                ...formData,
-                sampleCode: sampleCode,
-                status: 'receive_wait',
-                createdAt: Timestamp.now(),
-                createdBy: {
-                    uid: userData.uid,
-                    name: userData.name
-                },
-                history: [{
-                    action: '시료접수',
-                    actor: userData.name,
-                    timestamp: Timestamp.now(),
-                    location: location || null
-                }]
-            };
-            await addDoc(collection(db, `/artifacts/${appId}/public/data/samples`), newSample);
-            showMessage("시료가 성공적으로 접수되었습니다.");
-            setFormData({
-                itemName: '', sampleAmount: '', type: '위판장',
-                lab: userData.inspectionOffice && userData.inspectionOffice.length > 0 ? userData.inspectionOffice[0] : (offices.length > 0 ? offices[0] : ''),
-                location: '', datetime: '', etc: ''
-            });
-            setCurrentStep('receive_wait');
-        } catch (error) {
-            console.error("Error adding document: ", error);
-            showMessage("시료 접수에 실패했습니다.");
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
-
-    return (
-        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold mb-6">시료 접수</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">품목명 <span className="text-red-500">*</span></label>
-                        <input type="text" name="itemName" value={formData.itemName} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">시료량 (kg)</label>
-                        <input type="text" name="sampleAmount" value={formData.sampleAmount} onChange={handleChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">시료 분류</label>
-                        <select name="type" value={formData.type} onChange={handleChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
-                            {sampleTypes.map(type => <option key={type} value={type}>{type}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">접수 검사소 <span className="text-red-500">*</span></label>
-                        <select name="lab" value={formData.lab} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md">
-                            {offices.map(office => <option key={office} value={office}>{office}</option>)}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">채취 장소</label>
-                        <input type="text" name="location" value={formData.location} onChange={handleChange} className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">채취 일시 <span className="text-red-500">*</span></label>
-                        <input type="datetime-local" name="datetime" value={formData.datetime} onChange={handleChange} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
-                    </div>
-                    <div className="md:col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">추가정보</label>
-                        <textarea name="etc" value={formData.etc} onChange={handleChange} rows="3" className="mt-1 block w-full p-2 border border-gray-300 rounded-md"></textarea>
-                    </div>
-                </div>
-                <div className="flex justify-end gap-4 pt-4">
-                    <button type="button" onClick={() => setPage('home')} className="px-4 py-2 bg-gray-200 rounded-md">취소</button>
-                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
-                        {isSubmitting ? '접수 중...' : '접수'}
-                    </button>
-                </div>
-            </form>
-        </div>
-    );
-}
 
 function SampleReceiveScreen({ sample, userData, location, showMessage, setSelectedSample }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -3093,9 +2960,10 @@ function AnalysisManagement({ userData, location, locationError, onRetryGps, set
     const [currentStep, setCurrentStep] = useState(initialStep || null); 
     const [selectedSample, setSelectedSample] = useState(null);
     const [message, setMessage] = useState('');
+    const [officeList, setOfficeList] = useState([]);
 
     const processSteps = [
-        { id: 'receipt', name: '시료접수', component: SampleRegistrationForm, roles: ['시료채취원', '해수부(1)', '해수부(2)', '분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
+        { id: 'receipt', name: '시료접수', component: SampleReception, roles: ['시료채취원', '해수부(1)', '해수부(2)', '분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
         { id: 'receive_wait', name: '시료수령 대기', component: SampleReceiveScreen, roles: ['분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
         { id: 'prep_wait', name: '시료전처리 대기', component: SamplePrepScreen, roles: ['분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
         { id: 'analysis_wait', name: '분석대기', component: SampleAnalysisScreen, roles: ['분석원', '분석보조원', '기술책임자', '협회관리자', '최고관리자'] },
@@ -3107,6 +2975,20 @@ function AnalysisManagement({ userData, location, locationError, onRetryGps, set
     ];
 
     useEffect(() => {
+        // 검사소 목록 조회
+        const fetchOffices = async () => {
+            try {
+                const officesSnapshot = await getDocs(collection(db, `/artifacts/${appId}/public/data/inspection_offices`));
+                const allOffices = officesSnapshot.docs.map(doc => doc.data().name);
+                setOfficeList(allOffices);
+            } catch (error) {
+                console.error("검사소 목록을 불러오는 데 실패했습니다:", error);
+                setMessage("검사소 목록을 불러오는 데 실패했습니다.");
+            }
+        };
+        fetchOffices();
+
+        // 사용자 소속 검사소의 시료 정보 조회
         if (!userData.inspectionOffice || userData.inspectionOffice.length === 0) {
             setMessage("사용자에게 지정된 검사소가 없어 시료를 조회할 수 없습니다.");
             setSamplesByStatus({}); // Clear existing data
@@ -3115,15 +2997,13 @@ function AnalysisManagement({ userData, location, locationError, onRetryGps, set
         const q = query(collection(db, `/artifacts/${appId}/public/data/samples`), where("lab", "in", userData.inspectionOffice));
         const unsubscribe = onSnapshot(q, (querySnapshot) => {
             const statusCounts = processSteps.reduce((acc, step) => ({ ...acc, [step.id]: [] }), {});
-            console.log("AnalysisManagement - User Inspection Offices:", userData.inspectionOffice);
             querySnapshot.forEach((doc) => {
                 const sample = { id: doc.id, ...doc.data() };
-                console.log("AnalysisManagement - Sample Lab:", sample.lab, "Sample Code:", sample.sampleCode);
                 if (statusCounts[sample.status]) statusCounts[sample.status].push(sample);
             });
             setSamplesByStatus(statusCounts);
-            console.log("Samples by Status:", statusCounts);
         }, (error) => setMessage("샘플 데이터를 불러오는 데 실패했습니다."));
+        
         return unsubscribe;
     }, [userData.inspectionOffice]);
     
@@ -3151,7 +3031,7 @@ function AnalysisManagement({ userData, location, locationError, onRetryGps, set
         }
         
         if (currentStep === 'receipt') {
-            return <SampleRegistrationForm {...childProps} setCurrentStep={setCurrentStep} />;
+            return <SampleReception userData={userData} officeList={officeList} />;
         }
 
         if (currentStep === 'complete') {
