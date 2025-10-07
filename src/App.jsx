@@ -2639,14 +2639,15 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
 
 function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage, location, showMessage, setSelectedSample }) {
     const pretreatmentMethods = ['직접법(균질화)', '건조법', '회화법', '화학적 분해법'];
-    const [formData, setFormData] = useState({
+    const [pretreatmentGroups, setPretreatmentGroups] = useState([{
+        id: 1,
+        analysisType: 'Gamma',
         prepMethod: pretreatmentMethods[0],
         samplePreparationWeight: '',
         startTime: '',
         endTime: '',
-        notes: ''
-    });
-    const [prepPhotos, setPrepPhotos] = useState([null, null]);
+        photos: [null, null],
+    }]);
     const [isSigned, setIsSigned] = useState(false);
     const [signature, setSignature] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2663,22 +2664,42 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
     useEffect(() => {
         const currentSample = sample || selectedSample;
         if (currentSample && currentSample.pretreatment) {
-            setFormData(prev => ({ ...prev, prepMethod: currentSample.pretreatment }));
+            // If there's existing simple pretreatment data, you might want to adapt it
+            // For now, we'll just initialize with one default group.
         }
     }, [sample, selectedSample]);
 
-    const handleChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+    const handleGroupChange = (id, field, value) => {
+        setPretreatmentGroups(prev => prev.map(group => 
+            group.id === id ? { ...group, [field]: value } : group
+        ));
     };
 
-    const handlePhotoUpload = (event, index) => {
-        const file = event.target.files[0];
-        if (file) {
-            const newPhotos = [...prepPhotos];
-            newPhotos[index] = file;
-            setPrepPhotos(newPhotos);
-        }
+    const handleGroupPhotoUpload = (id, index, file) => {
+        setPretreatmentGroups(prev => prev.map(group => {
+            if (group.id === id) {
+                const newPhotos = [...group.photos];
+                newPhotos[index] = file;
+                return { ...group, photos: newPhotos };
+            }
+            return group;
+        }));
+    };
+
+    const addGroup = () => {
+        setPretreatmentGroups(prev => [...prev, {
+            id: Date.now(),
+            analysisType: 'Gamma',
+            prepMethod: pretreatmentMethods[0],
+            samplePreparationWeight: '',
+            startTime: '',
+            endTime: '',
+            photos: [null, null],
+        }]);
+    };
+
+    const removeGroup = (id) => {
+        setPretreatmentGroups(prev => prev.filter(group => group.id !== id));
     };
 
     const handleSign = () => {
@@ -2700,27 +2721,38 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
             showMessage({ text: '서명을 먼저 완료해주세요.', type: 'error' });
             return;
         }
-        if (!formData.startTime || !formData.endTime) {
-            showMessage({ text: "시작시간과 종료시간은 필수 항목입니다.", type: 'error' });
-            return;
+        
+        for (const group of pretreatmentGroups) {
+            if (!group.startTime || !group.endTime) {
+                showMessage({ text: "각 그룹의 시작시간과 종료시간은 필수 항목입니다.", type: 'error' });
+                return;
+            }
         }
         setIsSubmitting(true);
 
-        const photoURLs = [];
-        const photosToUpload = prepPhotos.filter(p => p !== null);
         const currentSample = sample || selectedSample;
+        const processedGroups = [];
 
-        for (const photo of photosToUpload) {
-            const photoRef = ref(storage, `samples/${currentSample.sampleCode}/prep/${photo.name}`);
-            try {
-                const snapshot = await uploadBytes(photoRef, photo);
-                const downloadURL = await getDownloadURL(snapshot.ref);
-                photoURLs.push(downloadURL);
-            } catch (uploadError) {
-                showMessage({ text: `전처리 사진 업로드 실패: ${uploadError.message}`, type: 'error' });
-                setIsSubmitting(false);
-                return;
+        for (const group of pretreatmentGroups) {
+            const photoURLs = [];
+            const photosToUpload = group.photos.filter(p => p !== null);
+
+            for (const photo of photosToUpload) {
+                const photoRef = ref(storage, `samples/${currentSample.sampleCode}/prep/${Date.now()}_${photo.name}`);
+                try {
+                    const snapshot = await uploadBytes(photoRef, photo);
+                    const downloadURL = await getDownloadURL(snapshot.ref);
+                    photoURLs.push(downloadURL);
+                } catch (uploadError) {
+                    showMessage({ text: `사진 업로드 실패: ${uploadError.message}`, type: 'error' });
+                    setIsSubmitting(false);
+                    return;
+                }
             }
+            
+            // eslint-disable-next-line no-unused-vars
+            const { photos, ...groupData } = group;
+            processedGroups.push({ ...groupData, photoURLs });
         }
 
         try {
@@ -2728,15 +2760,13 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
             const currentHistory = currentSample.history || [];
             await updateDoc(sampleRef, {
                 status: 'analysis_wait',
-                pretreatment: formData.prepMethod,
                 history: [
                     ...currentHistory,
                     {
                         action: '시료전처리',
                         actor: userData.name,
                         timestamp: Timestamp.now(),
-                        details: formData,
-                        photoURLs: photoURLs,
+                        details: { pretreatmentGroups: processedGroups },
                         signature: signature,
                     }
                 ]
@@ -2858,58 +2888,76 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
                 )}
             </div>
 
-            {/* --- 전처리 정보 입력 폼 --- */}
-            <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">전처리 정보 입력</h3>
-                <div className="space-y-4">
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">전처리 방법</label>
-                        <select name="prepMethod" value={formData.prepMethod} onChange={handleChange} disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100">
-                            {pretreatmentMethods.map(method => (
-                                <option key={method} value={method}>{method}</option>
-                            ))}
-                        </select>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">시료조제무게 (kg)</label>
-                        <input type="number" name="samplePreparationWeight" value={formData.samplePreparationWeight} onChange={handleChange} disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">시작시간</label>
-                            <input type="datetime-local" name="startTime" value={formData.startTime} onChange={handleChange} required disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
+                        {/* --- 전처리 정보 입력 폼 --- */}
+                        <div className="mb-6">
+                            <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">전처리 정보 입력</h3>
+                            <div className="space-y-6">
+                                {pretreatmentGroups.map((group, groupIndex) => (
+                                                            <div key={group.id} className="p-4 border rounded-lg relative">
+                                                                <h4 className="font-semibold mb-3">분석 시료 #{groupIndex + 1}</h4>
+                                                                <div className="space-y-4">
+                                                                    <div>
+                                                                        <label className="block text-sm font-medium text-gray-700">분석 종류</label>
+                                                                        <select value={group.analysisType} onChange={(e) => handleGroupChange(group.id, 'analysisType', e.target.value)} disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100">
+                                                                            <option value="Gamma">Gamma</option>
+                                                                            <option value="Beta">Beta</option>
+                                                                            <option value="Alpha">Alpha</option>
+                                                                        </select>
+                                                                    </div>                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">전처리 방법</label>
+                                                <select value={group.prepMethod} onChange={(e) => handleGroupChange(group.id, 'prepMethod', e.target.value)} disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100">
+                                                    {pretreatmentMethods.map(method => <option key={method} value={method}>{method}</option>)}
+                                                </select>
+                                            </div>
+                                            <div>
+                                                <label className="block text-sm font-medium text-gray-700">시료조제무게 (kg)</label>
+                                                <input type="number" value={group.samplePreparationWeight} onChange={(e) => handleGroupChange(group.id, 'samplePreparationWeight', e.target.value)} disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
+                                            </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">시작시간</label>
+                                                    <input type="datetime-local" value={group.startTime} onChange={(e) => handleGroupChange(group.id, 'startTime', e.target.value)} required disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
+                                                </div>
+                                                <div>
+                                                    <label className="block text-sm font-medium text-gray-700">종료시간</label>
+                                                    <input type="datetime-local" value={group.endTime} onChange={(e) => handleGroupChange(group.id, 'endTime', e.target.value)} required disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
+                                                </div>
+                                            </div>
+                                            <div>
+                                                <h5 className="text-sm font-medium text-gray-700 mb-2">전처리 사진 (최대 2건)</h5>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                                    {[0, 1].map(index => (
+                                                        <div key={index} className="border p-3 rounded-md">
+                                                            <label htmlFor={`prep-photo-${group.id}-${index}`} className="text-sm text-gray-600 mb-1 block">사진 {index + 1}</label>
+                                                            <input type="file" id={`prep-photo-${group.id}-${index}`} accept="image/*" onChange={(e) => handleGroupPhotoUpload(group.id, index, e.target.files[0])} disabled={isSigned || isSubmitting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"/>
+                                                            {group.photos[index] && (
+                                                                <div className="mt-2">
+                                                                    <img src={URL.createObjectURL(group.photos[index])} alt={`사진 ${index + 1} 미리보기`} className="w-full h-32 object-cover rounded-md"/>
+                                                                    <p className="mt-2 text-xs text-gray-500 truncate">{group.photos[index].name}</p>
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        </div>
+                                        {pretreatmentGroups.length > 1 && (
+                                            <button type="button" onClick={() => removeGroup(group.id)} disabled={isSigned || isSubmitting} className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 w-8 h-8 flex items-center justify-center hover:bg-red-600">
+                                                X
+                                            </button>
+                                        )}
+                                    </div>
+                                ))}
+                            </div>
+                            <button type="button" onClick={addGroup} disabled={isSigned || isSubmitting} className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 disabled:bg-gray-400">
+                                전처리 그룹 추가
+                            </button>
                         </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">종료시간</label>
-                            <input type="datetime-local" name="endTime" value={formData.endTime} onChange={handleChange} required disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"/>
+            
+                        {/* --- 전처리 사진 업로드 --- */}
+                        <div className="mb-6" style={{display: 'none'}}>
+                            {/* This section is now part of the dynamic groups, so we hide the old one. */}
                         </div>
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">특이사항</label>
-                        <textarea name="notes" value={formData.notes} onChange={handleChange} rows="3" disabled={isSigned || isSubmitting} className="mt-1 block w-full p-2 border border-gray-300 rounded-md disabled:bg-gray-100"></textarea>
-                    </div>
-                </div>
-            </div>
-
-            {/* --- 전처리 사진 업로드 --- */}
-            <div className="mb-6">
-                <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">전처리 사진</h3>
-                <div className="mt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {[0, 1].map(index => (
-                        <div key={index} className="border p-3 rounded-md">
-                            <label htmlFor={`prep-photo-${index}`} className="text-sm text-gray-600 mb-1 block">전처리 사진 {index + 1}</label>
-                            <input type="file" id={`prep-photo-${index}`} accept="image/*" onChange={(e) => handlePhotoUpload(e, index)} disabled={isSigned || isSubmitting} className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-semibold file:bg-indigo-50 file:text-indigo-700 hover:file:bg-indigo-100 disabled:opacity-50"/>
-                            {prepPhotos[index] && (
-                                <div className="mt-2">
-                                    <img src={URL.createObjectURL(prepPhotos[index])} alt={`전처리 사진 ${index + 1} 미리보기`} className="w-full h-32 object-cover rounded-md"/>
-                                    <p className="mt-2 text-xs text-gray-500 truncate">{prepPhotos[index].name}</p>
-                                </div>
-                            )}
-                        </div>
-                    ))}
-                </div>
-            </div>
-
             {/* --- 전처리 담당자 전자결재 --- */}
             <div className="border-t pt-6">
                 <h3 className="text-lg font-medium text-gray-900">전처리 담당자 전자결재</h3>
@@ -3436,7 +3484,12 @@ function AnalysisManagement({ db, appId, storage, userData, location, locationEr
                         <div>시료ID</div>
                         <div>품목명</div>
                         <div>채취일시</div>
-                        <div>상태변경일시</div>
+                        <div>
+                            {currentStep === 'receive_wait' && '시료접수일시'}
+                            {currentStep === 'prep_wait' && '시료수령일시'}
+                            {currentStep === 'analysis_wait' && '전처리완료일시'}
+                            {currentStep !== 'receive_wait' && currentStep !== 'prep_wait' && currentStep !== 'analysis_wait' && '상태변경일시'}
+                        </div>
                     </div>
                     <ul className="divide-y divide-gray-200">
                         {samplesForStep.length > 0 ? samplesForStep.map(sample => {

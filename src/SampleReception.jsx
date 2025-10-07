@@ -11,14 +11,6 @@ const sampleTypes = [
   { code: 'OMP', name: '기타' },
 ];
 
-// 전처리방법 데이터
-const pretreatmentMethods = [
-  '직접법(균질화)',
-  '건조법',
-  '회화법',
-  '화학적 분해법',
-];
-
 /**
  * 시료 접수 컴포넌트
  */
@@ -40,7 +32,6 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
     samplingLocation: '',
     itemName: '',
     sampleAmount: '',
-    pretreatment: pretreatmentMethods[0], // 기본값 설정
     receptionAgency: '',
     samplingOrg: '',
     additionalInfo: '',
@@ -201,7 +192,6 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
       type: formState.sampleType, // DB에는 '위판장'과 같은 전체 이름을 저장
       itemName: formState.itemName,
       sampleAmount: formState.sampleAmount,
-      pretreatment: formState.pretreatment, // 전처리방법 추가
       lab: formState.receptionAgency,
       datetime: formState.samplingTime,
       location: formState.samplingLocation,
@@ -215,7 +205,7 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
 
     try {
       await addDoc(collection(db, `/artifacts/${appId}/public/data/samples`), newSample);
-      setMessage({ text: `시료 접수가 완료되어 '시료수령 대기' 상태로 전환되었습니다.`, type: 'success' });
+      setMessage({ text: "시료접수를 완료하였습니다.", type: 'success' });
       setFormState(initialFormState);
     } catch (error) {
       console.error("Error adding document: ", error);
@@ -289,17 +279,6 @@ const SampleReception = ({ userData, officeList = [], db, appId, storage }) => {
             <label htmlFor="sampleAmount" className="block text-sm font-medium text-gray-700">시료량 (kg)</label>
             <input type="number" id="sampleAmount" name="sampleAmount" value={formState.sampleAmount} onChange={handleChange} disabled={formFieldsDisabled} className="mt-1 block w-full shadow-sm sm:text-sm border-gray-300 rounded-md disabled:bg-gray-100"/>
           </div>
-
-          <div>
-            <label htmlFor="pretreatment" className="block text-sm font-medium text-gray-700">전처리방법</label>
-            <select id="pretreatment" name="pretreatment" value={formState.pretreatment} onChange={handleChange} disabled={formFieldsDisabled} className="mt-1 block w-full pl-3 pr-10 py-2 text-base border-gray-300 focus:outline-none focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm rounded-md disabled:bg-gray-100">
-              {pretreatmentMethods.map(method => (
-                <option key={method} value={method}>{method}</option>
-              ))}
-            </select>
-          </div>
-
-
 
           <div>
             <label htmlFor="receptionAgency" className="block text-sm font-medium text-gray-700">시료접수기관 (검사소)</label>
