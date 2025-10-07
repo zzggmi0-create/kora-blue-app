@@ -477,6 +477,8 @@ function AnalysisSystemApp({ userData, setAppMode, onLogout }) {
 
     const renderPage = () => {
         const props = { 
+            db,
+            appId,
             userData, 
             location, 
             locationError, 
@@ -2955,7 +2957,7 @@ function SampleAssocReviewScreen({ sample, userData, location, showMessage, setS
     );
 }
 
-function AnalysisManagement({ userData, location, locationError, onRetryGps, setPage, initialStep }) {
+function AnalysisManagement({ db, appId, userData, location, locationError, onRetryGps, setPage, initialStep }) {
     const [samplesByStatus, setSamplesByStatus] = useState({});
     const [currentStep, setCurrentStep] = useState(initialStep || null); 
     const [selectedSample, setSelectedSample] = useState(null);
@@ -3031,7 +3033,7 @@ function AnalysisManagement({ userData, location, locationError, onRetryGps, set
         }
         
         if (currentStep === 'receipt') {
-            return <SampleReception userData={userData} officeList={officeList} />;
+            return <SampleReception userData={userData} officeList={officeList} db={db} appId={appId} />;
         }
 
         if (currentStep === 'complete') {
