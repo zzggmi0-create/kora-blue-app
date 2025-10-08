@@ -2977,7 +2977,35 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
 function SampleAnalysisScreen({ sample, userData, location, showMessage, setSelectedSample }) {
     const [equipment, setEquipment] = useState([]);
     const [selectedEquipment, setSelectedEquipment] = useState('');
+    const [startTime, setStartTime] = useState('');
+    const [measurementTime, setMeasurementTime] = useState('');
+    const [measurementTimeUnit, setMeasurementTimeUnit] = useState('초');
+    const [isSigned, setIsSigned] = useState(false);
+    const [signature, setSignature] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [openSections, setOpenSections] = useState(['전처리완료']);
+
+    const toggleSection = (sectionName) => {
+        setOpenSections(prev => 
+            prev.includes(sectionName) 
+                ? prev.filter(s => s !== sectionName) 
+                : [...prev, sectionName]
+        );
+    };
+
+    const handleSign = () => {
+        const now = new Date();
+        const formattedTimestamp =
+          `${String(now.getFullYear()).slice(2)}.` +
+          `${String(now.getMonth() + 1).padStart(2, '0')}.` +
+          `${String(now.getDate()).padStart(2, '0')} ` +
+          `${String(now.getHours()).padStart(2, '0')}:` +
+          `${String(now.getMinutes()).padStart(2, '0')}`;
+
+        setSignature({ name: userData.name, timestamp: formattedTimestamp });
+        setIsSigned(true);
+        showMessage({ text: '서명이 완료되었습니다.', type: 'success' });
+    };
 
     useEffect(() => {
         const fetchEquipment = async () => {
@@ -3031,9 +3059,103 @@ function SampleAnalysisScreen({ sample, userData, location, showMessage, setSele
         }
     };
 
+    const receptionHistory = sample.history?.find(h => h.action === '시료접수');
+    const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+    const prepStartEntry = sample.history?.find(h => h.action === '시료전처리');
+    const prepDoneEntry = sample.history?.find(h => h.action === '전처리완료');
+
+    const renderDetailRow = (label, value) => {
+        if (value === null || value === undefined || value === '') return null;
+        return (
+            <div className="flex border-t py-2">
+                <strong className="w-32 text-gray-500 flex-shrink-0">{label}:</strong>
+                <span className="text-gray-800 break-all">{value}</span>
+            </div>
+        );
+    };
+
+    const renderHistorySection = (title, data, photos) => {
+        const isOpen = openSections.includes(title);
+        return (
+            <div className="border rounded-md">
+                <button onClick={() => toggleSection(title)} className="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100">
+                    <span className="font-semibold">{title} 정보</span>
+                    <span>{isOpen ? '▲' : '▼'}</span>
+                </button>
+                {isOpen && (
+                    <div className="p-4 border-t text-sm">
+                        {data.map(item => renderDetailRow(item.label, item.value))}
+                        {photos && photos.length > 0 && (
+                            <div className="pt-2">
+                                <strong className="w-32 text-gray-500 flex-shrink-0">사진:</strong>
+                                <div className="grid grid-cols-2 gap-4 mt-2">
+                                    {photos.map((url, index) => (
+                                        <a key={index} href={url} target="_blank" rel="noopener noreferrer">
+                                            <img src={url} alt={`${title} 사진 ${index + 1}`} className="w-full h-auto max-h-48 object-contain rounded-lg border"/>
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
+    };
+    
+    const receptionData = [
+        { label: '시료 ID', value: sample.sampleCode },
+        { label: '품목명', value: sample.itemName },
+        { label: '시료분류', value: sample.type },
+        { label: '시료량', value: `${sample.sampleAmount} ${sample.sampleAmountUnit}` },
+        { label: '채취일시', value: sample.datetime ? new Date(sample.datetime).toLocaleString() : 'N/A' },
+        { label: '채취장소', value: sample.location },
+        { label: '채취자', value: sample.sampler },
+        { label: '채취자 연락처', value: sample.samplerContact },
+        { label: '채취기관', value: sample.samplingOrg },
+        { label: '접수기관', value: sample.lab },
+        { label: '추가정보', value: sample.etc },
+        { label: '접수 특이사항', value: sample.receptionInfo },
+        { label: '접수자', value: receptionHistory?.actor },
+        { label: '접수일시', value: receptionHistory?.timestamp.toDate().toLocaleString() },
+        { label: '접수자 서명', value: receptionHistory?.signature ? `${receptionHistory.signature.name} (${receptionHistory.signature.timestamp})` : null },
+    ];
+
+    const receiveData = [
+        { label: '수령자', value: receiveHistory?.actor },
+        { label: '수령일시', value: receiveHistory?.timestamp.toDate().toLocaleString() },
+        { label: '수령자 서명', value: receiveHistory?.signature ? `${receiveHistory.signature.name} (${receiveHistory.signature.timestamp})` : null },
+        { label: '분석 분류', value: (
+            <ul className="list-disc pl-5">
+                {(receiveHistory?.classifications || []).map(c => <li key={c.id}>{c.type}: {c.quantity}개</li>)}
+            </ul>
+        )},
+    ];
+
+    const prepStartData = [
+        { label: '담당자', value: prepStartEntry?.actor },
+        { label: '시작일시', value: prepStartEntry?.details?.startTime ? new Date(prepStartEntry.details.startTime).toLocaleString() : 'N/A' },
+        { label: '서명', value: prepStartEntry?.signature ? `${prepStartEntry.signature.name} (${prepStartEntry.signature.timestamp})` : null },
+    ];
+    
+    const prepDoneData = [
+        { label: '담당자', value: prepDoneEntry?.actor },
+        { label: '종료일시', value: prepDoneEntry?.details?.endTime ? new Date(prepDoneEntry.details.endTime).toLocaleString() : 'N/A' },
+        { label: '시료조제무게', value: prepDoneEntry?.details ? `${prepDoneEntry.details.preparedWeight} ${prepDoneEntry.details.preparedWeightUnit}` : null },
+        { label: '서명', value: prepDoneEntry?.signature ? `${prepDoneEntry.signature.name} (${prepDoneEntry.signature.timestamp})` : null },
+    ];
+
     return (
         <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
             <h2 className="text-2xl font-bold mb-6">분석 시작 ({sample.sampleCode})</h2>
+
+            <div className="space-y-2 mb-6">
+                {renderHistorySection('시료접수', receptionData, sample.photoURLs)}
+                {renderHistorySection('시료수령', receiveData, receiveHistory?.photoURLs)}
+                {renderHistorySection('시료전처리 시작', prepStartData, [])}
+                {renderHistorySection('전처리완료', prepDoneData, prepDoneEntry?.photoURLs)}
+            </div>
+
             <form onSubmit={handleSubmit} className="space-y-4">
                 <div>
                     <label className="block text-sm font-medium text-gray-700">분석 장비 선택</label>
@@ -3050,9 +3172,46 @@ function SampleAnalysisScreen({ sample, userData, location, showMessage, setSele
                         )}
                     </select>
                 </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">분석 시작시간</label>
+                    <input type="datetime-local" value={startTime} onChange={(e) => setStartTime(e.target.value)} required className="mt-1 block w-full p-2 border border-gray-300 rounded-md"/>
+                </div>
+                <div>
+                    <label className="block text-sm font-medium text-gray-700">계측시간</label>
+                    <div className="mt-1 flex rounded-md shadow-sm">
+                        <input type="number" value={measurementTime} onChange={(e) => setMeasurementTime(e.target.value)} required className="flex-grow block w-full min-w-0 rounded-none rounded-l-md sm:text-sm border-gray-300"/>
+                        <select value={measurementTimeUnit} onChange={(e) => setMeasurementTimeUnit(e.target.value)} className="inline-flex items-center px-3 rounded-r-md border border-l-0 border-gray-300 bg-gray-50 text-gray-500 text-sm">
+                            <option>초</option>
+                            <option>분</option>
+                            <option>시간</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div className="border-t pt-6">
+                    <h3 className="text-lg font-medium text-gray-900">전자결재</h3>
+                    <div className="mt-4 space-y-3">
+                        <div className="flex items-center">
+                        {isSigned ? (
+                            <div className="flex flex-col items-start">
+                                <span className="text-sm font-semibold text-gray-800">{signature.name}</span>
+                                <span className="text-sm text-gray-600">{signature.timestamp}</span>
+                            </div>
+                        ) : (
+                            <span className="text-sm text-gray-500">서명 대기 중</span>
+                        )}
+                        </div>
+                        <div className="pt-2">
+                        <button type="button" onClick={handleSign} disabled={isSigned || isSubmitting} className="px-4 py-2 border border-gray-300 text-sm font-medium rounded-md shadow-sm text-gray-700 bg-white hover:bg-gray-50 disabled:bg-gray-200">
+                            서명하기
+                        </button>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="flex justify-end gap-4 pt-4 border-t">
                     <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
-                    <button type="submit" disabled={isSubmitting || equipment.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
+                    <button type="submit" disabled={!isSigned || isSubmitting || equipment.length === 0} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
                         {isSubmitting ? '처리 중...' : '분석 시작'}
                     </button>
                 </div>
