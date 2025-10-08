@@ -2,7 +2,35 @@ import React, { useState } from 'react';
 
 function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSelectedSample, onBack }) {
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [openSections, setOpenSections] = useState(['분석시작']);
+    const [openSections, setOpenSections] = useState(['분석시작', '핵종분석결과']);
+    const [nuclideResults, setNuclideResults] = useState([
+        { id: 1, name: '', concentration: '', uncertainty: '', mdaChecked: false }
+    ]);
+
+    const addNuclideRow = () => {
+        setNuclideResults(prev => [
+            ...prev,
+            { id: Date.now(), name: '', concentration: '', uncertainty: '', mdaChecked: false }
+        ]);
+    };
+
+    const removeNuclideRow = (id) => {
+        setNuclideResults(prev => prev.filter(row => row.id !== id));
+    };
+
+    const handleNuclideChange = (id, field, value) => {
+        setNuclideResults(prev =>
+            prev.map(row => (row.id === id ? { ...row, [field]: value } : row))
+        );
+    };
+
+    const handleMdaChange = (id) => {
+        setNuclideResults(prev =>
+            prev.map(row =>
+                row.id === id ? { ...row, mdaChecked: !row.mdaChecked } : row
+            )
+        );
+    };
 
     const toggleSection = (sectionName) => {
         setOpenSections(prev =>
@@ -145,6 +173,82 @@ function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSel
                 {prepStartEntry && renderHistorySection('시료전처리 시작', prepStartData, [])}
                 {prepDoneEntry && renderHistorySection('전처리완료', prepDoneData, prepDoneEntry?.photoURLs)}
                 {analysisStartEntry && renderHistorySection('분석시작', analysisStartData, [])}
+
+                <div className="border rounded-md">
+                    <button onClick={() => toggleSection('핵종분석결과')} className="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100">
+                        <span className="font-semibold">핵종분석결과</span>
+                        <span>{openSections.includes('핵종분석결과') ? '▲' : '▼'}</span>
+                    </button>
+                    {openSections.includes('핵종분석결과') && (
+                        <div className="p-4 border-t text-sm">
+                            <div className="space-y-2">
+                                <div className="grid grid-cols-12 gap-2 font-semibold">
+                                    <div className="col-span-3">핵종명</div>
+                                    <div className="col-span-1">MDA</div>
+                                    <div className="col-span-6">방사능농도 ± 불확도</div>
+                                    <div className="col-span-2"></div>
+                                </div>
+                                {nuclideResults.map((row, index) => (
+                                    <div key={row.id} className="grid grid-cols-12 gap-2 items-center">
+                                        <div className="col-span-3">
+                                            <input
+                                                type="text"
+                                                value={row.name}
+                                                onChange={(e) => handleNuclideChange(row.id, 'name', e.target.value)}
+                                                className="w-full p-1 border rounded"
+                                            />
+                                        </div>
+                                        <div className="col-span-1 flex justify-center">
+                                            <input
+                                                type="checkbox"
+                                                checked={row.mdaChecked}
+                                                onChange={() => handleMdaChange(row.id)}
+                                                className="h-5 w-5"
+                                            />
+                                        </div>
+                                        <div className="col-span-6 flex items-center gap-1">
+                                            {row.mdaChecked ? (
+                                                <>
+                                                    <span className="font-semibold text-gray-500">{'<'}</span>
+                                                    <input
+                                                        type="text"
+                                                        value={row.concentration}
+                                                        onChange={(e) => handleNuclideChange(row.id, 'concentration', e.target.value)}
+                                                        className="w-full p-1 border rounded"
+                                                    />
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <input
+                                                        type="text"
+                                                        value={row.concentration}
+                                                        onChange={(e) => handleNuclideChange(row.id, 'concentration', e.target.value)}
+                                                        className="w-1/2 p-1 border rounded"
+                                                    />
+                                                    <span className="font-semibold text-gray-500">±</span>
+                                                    <input
+                                                        type="text"
+                                                        value={row.uncertainty}
+                                                        onChange={(e) => handleNuclideChange(row.id, 'uncertainty', e.target.value)}
+                                                        className="w-1/2 p-1 border rounded"
+                                                    />
+                                                </>
+                                            )}
+                                        </div>
+                                        <div className="col-span-2">
+                                            {index > 0 && (
+                                                <button onClick={() => removeNuclideRow(row.id)} className="px-2 py-1 bg-red-500 text-white rounded text-xs">삭제</button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                            <button onClick={addNuclideRow} className="mt-3 px-3 py-1 bg-blue-500 text-white rounded text-sm">
+                                핵종 추가
+                            </button>
+                        </div>
+                    )}
+                </div>
             </div>
 
             <div className="p-4 border rounded-lg bg-blue-50 mb-6">
