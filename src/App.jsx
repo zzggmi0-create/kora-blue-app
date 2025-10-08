@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import SampleReception from './SampleReception';
+import SampleHistoryViewer from './SampleHistoryViewer';
 import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
@@ -89,6 +90,37 @@ export default function App() {
     const [loginError, setLoginError] = useState('');
     const [isDemoMode, setIsDemoMode] = useState(false);
 
+    const [historySampleId, setHistorySampleId] = useState(null);
+    const [historySampleData, setHistorySampleData] = useState(null);
+    const [historyLoading, setHistoryLoading] = useState(true);
+
+    useEffect(() => {
+        const params = new URLSearchParams(window.location.search);
+        const sampleId = params.get('history_id');
+        if (sampleId) {
+            setHistorySampleId(sampleId);
+        } else {
+            setHistoryLoading(false);
+        }
+    }, []);
+
+    useEffect(() => {
+        if (historySampleId && db) {
+            const fetchSample = async () => {
+                try {
+                    const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, historySampleId);
+                    const docSnap = await getDoc(sampleRef);
+                    if (docSnap.exists()) {
+                        setHistorySampleData({ id: docSnap.id, ...docSnap.data() });
+                    }
+                } finally {
+                    setHistoryLoading(false);
+                }
+            };
+            fetchSample();
+        }
+    }, [historySampleId, db]);
+
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, async (user) => {
             if (isDemoMode) {
@@ -121,6 +153,14 @@ export default function App() {
         
         return () => unsubscribe();
     }, [isDemoMode]);
+
+    if (historyLoading) {
+        return <div className="flex items-center justify-center h-screen bg-gray-100"><div className="text-xl font-bold">이력 정보 로딩 중...</div></div>;
+    }
+
+    if (historySampleData) {
+        return <SampleHistoryViewer sample={historySampleData} db={db} appId={appId} userData={userData} />;
+    }
 
     const handleDemoLogin = (role) => {
         const demoUser = { uid: `demo-${role.toLowerCase()}`, isAnonymous: false, displayName: `${role} (데모)` };
@@ -3902,6 +3942,9 @@ function SampleAnalysisDoneScreen({ sample, userData, db, appId, storage, locati
         <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl mx-auto">
             <button onClick={() => setSelectedSample(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로 돌아가기</button>
                         <h2 className="text-2xl font-bold mb-6">분석완료 정보 ({sample.sampleCode})</h2>
+            <a href={`/?history_id=${sample.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline mb-4 inline-block">
+                전체 이력 새 창에서 보기
+            </a>
                         
                         <div className="space-y-2 mb-6">
                 {receptionHistory && renderHistorySection('시료접수', receptionData, sample.photoURLs)}
@@ -4005,6 +4048,9 @@ function SampleTechReviewScreen({ sample, userData, location, showMessage, setSe
     return (
         <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
             <h2 className="text-2xl font-bold mb-6">기술책임자 검토 ({sample.sampleCode})</h2>
+            <a href={`/?history_id=${sample.id}`} target="_blank" rel="noopener noreferrer" className="text-blue-600 hover:underline mb-4 inline-block">
+                전체 이력 새 창에서 보기
+            </a>
             
             <div className="space-y-4 mb-6">
                 {analysisResults ? analysisResults.map((result, index) => (
