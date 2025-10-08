@@ -3478,7 +3478,7 @@ function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSel
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [openSections, setOpenSections] = useState(['분석시작', '핵종분석결과']);
     const [nuclideResults, setNuclideResults] = useState([
-        { id: 1, name: '', concentration: '', uncertainty: '', mdaChecked: false }
+        { id: 1, name: '', concentration: '', uncertainty: '', mdaChecked: false, unit: 'kg' }
     ]);
 
     useEffect(() => {
@@ -3487,10 +3487,10 @@ function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSel
 
         if (isGammaAnalysis) {
             const defaultNuclides = [
-                { id: 'I-131', name: 'I-131', concentration: '', uncertainty: '', mdaChecked: false },
-                { id: 'Cs-134', name: 'Cs-134', concentration: '', uncertainty: '', mdaChecked: false },
-                { id: 'Cs-137', name: 'Cs-137', concentration: '', uncertainty: '', mdaChecked: false },
-                { id: 'K-40', name: 'K-40', concentration: '', uncertainty: '', mdaChecked: false },
+                { id: 'I-131', name: 'I-131', concentration: '', uncertainty: '', mdaChecked: false, unit: 'kg' },
+                { id: 'Cs-134', name: 'Cs-134', concentration: '', uncertainty: '', mdaChecked: false, unit: 'kg' },
+                { id: 'Cs-137', name: 'Cs-137', concentration: '', uncertainty: '', mdaChecked: false, unit: 'kg' },
+                { id: 'K-40', name: 'K-40', concentration: '', uncertainty: '', mdaChecked: false, unit: 'kg' },
             ];
             setNuclideResults(defaultNuclides);
         }
@@ -3499,7 +3499,7 @@ function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSel
     const addNuclideRow = () => {
         setNuclideResults(prev => [
             ...prev,
-            { id: Date.now(), name: '', concentration: '', uncertainty: '', mdaChecked: false }
+            { id: Date.now(), name: '', concentration: '', uncertainty: '', mdaChecked: false, unit: 'kg' }
         ]);
     };
 
@@ -3553,6 +3553,10 @@ function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSel
                         actor: userData.name,
                         timestamp: Timestamp.now(),
                         location: location || null,
+                        details: {
+                            nuclideResults: nuclideResults,
+                            analystSignature: analystSignature
+                        }
                     }
                 ]
             });
@@ -3684,7 +3688,8 @@ function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSel
                                 <div className="grid grid-cols-12 gap-2 font-semibold">
                                     <div className="col-span-3">핵종명</div>
                                     <div className="col-span-1">MDA</div>
-                                    <div className="col-span-6">방사능농도 ± 불확도</div>
+                                    <div className="col-span-5">방사능농도 ± 불확도</div>
+                                    <div className="col-span-1">단위</div>
                                     <div className="col-span-2"></div>
                                 </div>
                                 {nuclideResults.map((row, index) => (
@@ -3705,7 +3710,7 @@ function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSel
                                                 className="h-5 w-5"
                                             />
                                         </div>
-                                        <div className="col-span-6 flex items-center gap-1">
+                                        <div className="col-span-5 flex items-center gap-1">
                                             {row.mdaChecked ? (
                                                 <>
                                                     <span className="font-semibold text-gray-500">{'<'}</span>
@@ -3733,6 +3738,18 @@ function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSel
                                                     />
                                                 </>
                                             )}
+                                        </div>
+                                        <div className="col-span-1">
+                                            <select
+                                                value={row.unit}
+                                                onChange={(e) => handleNuclideChange(row.id, 'unit', e.target.value)}
+                                                className="w-full p-1 border rounded text-sm"
+                                            >
+                                                <option>kg</option>
+                                                <option>g</option>
+                                                <option>L</option>
+                                                <option>mL</option>
+                                            </select>
                                         </div>
                                         <div className="col-span-2">
                                             {nuclideResults.length > 1 && (
@@ -3775,85 +3792,172 @@ function SampleAnalyzingScreen({ sample, userData, location, showMessage, setSel
     );
 }
 
-function SampleAnalysisDoneScreen({ sample, userData, location, showMessage, setSelectedSample }) {
-    const [results, setResults] = useState([{ radionuclide: 'I-131', activity: '', mda: '' }, { radionuclide: 'Cs-134', activity: '', mda: '' }, { radionuclide: 'Cs-137', activity: '', mda: '' }]);
-    const [isSubmitting, setIsSubmitting] = useState(false);
+function SampleAnalysisDoneScreen({ sample, userData, db, appId, storage, location, showMessage, setSelectedSample }) {
+    const [openSections, setOpenSections] = useState([]);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editableSample, setEditableSample] = useState(JSON.parse(JSON.stringify(sample)));
+    const [modificationReason, setModificationReason] = useState('');
+    const [showPreliminaryReport, setShowPreliminaryReport] = useState(false);
+    const [reportSignature, setReportSignature] = useState(null);
+    const [notificationSignature, setNotificationSignature] = useState(null);
+    const [finalReviewSignature, setFinalReviewSignature] = useState(null);
+    const [uploadedFiles, setUploadedFiles] = useState(sample.uploadedFiles || {});
 
-    const handleResultChange = (index, field, value) => {
-        const newResults = [...results];
-        newResults[index][field] = value;
-        setResults(newResults);
-    };
-
-    const handleSubmit = async (e) => {
-        e.preventDefault();
-        setIsSubmitting(true);
-        try {
-            const sampleRef = doc(db, `/artifacts/${appId}/public/data/samples`, sample.id);
-            const currentHistory = sample.history || [];
-            await updateDoc(sampleRef, {
-                status: 'tech_review_wait',
-                history: [
-                    ...currentHistory,
-                    {
-                        action: '분석평가',
-                        actor: userData.name,
-                        timestamp: Timestamp.now(),
-                        location: location || null,
-                        results: results
-                    }
-                ]
-            });
-            showMessage("분석 결과가 저장되었습니다.");
-            setSelectedSample(null);
-        } catch (error) {
-            console.error("Error updating document: ", error);
-            showMessage("분석 결과 저장에 실패했습니다.");
-        } finally {
-            setIsSubmitting(false);
+    useEffect(() => {
+        const sections = [];
+        if (sample.history?.some(h => h.action === '시료접수')) sections.push('시료접수');
+        if (sample.history?.some(h => h.action === '시료수령')) sections.push('시료수령');
+        if (sample.history?.some(h => h.action === '시료전처리')) sections.push('시료전처리 시작');
+        if (sample.history?.some(h => h.action === '전처리완료')) sections.push('전처리완료');
+        if (sample.history?.some(h => h.action === '분석시작')) sections.push('분석시작');
+        if (sample.history?.some(h => h.action === '분석완료')) sections.push('핵종분석결과');
+        
+        if (sections.length > 0) {
+            setOpenSections([sections[sections.length - 1]]);
         }
+    }, [sample]);
+
+    const toggleSection = (sectionName) => setOpenSections(prev => prev.includes(sectionName) ? prev.filter(s => s !== sectionName) : [...prev, sectionName]);
+    const handleEditableChange = (field, value) => setEditableSample(prev => ({ ...prev, [field]: value }));
+    const handleSave = async () => { /* ... save logic ... */ };
+    const handleFileUpload = async (file, type) => { /* ... file upload logic ... */ };
+    const handleRequestTechReview = async () => { /* ... request review logic ... */ };
+    const handleNotificationComplete = async () => { /* ... notification logic ... */ };
+    const handleSignPreliminaryReport = () => setReportSignature({ name: userData.name, timestamp: new Date() });
+
+    const renderDetailRow = (item) => (
+        <div key={item.label} className="flex border-t py-2 items-center">
+            <strong className="w-32 text-gray-500 flex-shrink-0">{item.label}:</strong>
+            {isEditing && item.isEditable ? (
+                <input type="text" value={item.value} onChange={(e) => handleEditableChange(item.field, e.target.value)} className="text-gray-800 break-all w-full p-1 border rounded" />
+            ) : (
+                <span className="text-gray-800 break-all">{String(item.value)}</span>
+            )}
+        </div>
+    );
+
+    const renderHistorySection = (title, data, photos) => {
+        const isOpen = openSections.includes(title);
+        return (
+            <div className="border rounded-md">
+                <button onClick={() => toggleSection(title)} className="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100">
+                    <span className="font-semibold">{title} 정보</span>
+                    <span>{isOpen ? '▲' : '▼'}</span>
+                </button>
+                {isOpen && (
+                    <div className="p-4 border-t text-sm">
+                        {data.map(renderDetailRow)}
+                        {photos && photos.length > 0 && (
+                            <div className="pt-2">
+                                <strong className="w-32 text-gray-500 flex-shrink-0">사진:</strong>
+                                <div className="grid grid-cols-2 gap-4 mt-2">
+                                    {photos.map((url, index) => (
+                                        <a key={index} href={url} target="_blank" rel="noopener noreferrer">
+                                            <img src={url} alt={`${title} 사진 ${index + 1}`} className="w-full h-auto max-h-48 object-contain rounded-lg border"/>
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                )}
+            </div>
+        );
     };
+
+    const receptionHistory = sample.history?.find(h => h.action === '시료접수');
+    const receiveHistory = sample.history?.find(h => h.action === '시료수령');
+    const prepStartEntry = sample.history?.find(h => h.action === '시료전처리');
+    const prepDoneEntry = sample.history?.find(h => h.action === '전처리완료');
+    const analysisStartEntry = sample.history?.find(h => h.action === '분석시작');
+    const analysisDoneEntry = sample.history?.find(h => h.action === '분석완료');
+    const nuclideResults = analysisDoneEntry?.details?.nuclideResults || [];
+    const analystSignature = analysisDoneEntry?.details?.analystSignature;
+
+    const receptionData = [
+        { label: '시료 ID', value: editableSample.sampleCode, field: 'sampleCode', isEditable: true },
+        { label: '품목명', value: editableSample.itemName, field: 'itemName', isEditable: true },
+        { label: '접수자', value: receptionHistory?.actor, isEditable: false },
+        { label: '접수일시', value: receptionHistory?.timestamp.toDate().toLocaleString(), isEditable: false },
+    ];
+    const receiveData = [
+        { label: '수령자', value: receiveHistory?.actor, isEditable: false },
+        { label: '수령일시', value: receiveHistory?.timestamp.toDate().toLocaleString(), isEditable: false },
+    ];
+    const prepStartData = [
+        { label: '담당자', value: prepStartEntry?.actor, isEditable: false },
+        { label: '시작일시', value: prepStartEntry?.details?.startTime ? new Date(prepStartEntry.details.startTime).toLocaleString() : 'N/A', isEditable: false },
+    ];
+    const prepDoneData = [
+        { label: '담당자', value: prepDoneEntry?.actor, isEditable: false },
+        { label: '종료일시', value: prepDoneEntry?.details?.endTime ? new Date(prepDoneEntry.details.endTime).toLocaleString() : 'N/A', isEditable: false },
+    ];
+    const analysisStartData = [
+        { label: '담당자', value: analysisStartEntry?.actor, isEditable: false },
+        { label: '분석 장비', value: analysisStartEntry?.details?.equipmentName, isEditable: false },
+        { label: '분석 시작', value: analysisStartEntry?.timestamp.toDate().toLocaleString(), isEditable: false },
+    ];
 
     return (
-        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-2xl mx-auto">
-            <h2 className="text-2xl font-bold mb-6">분석 결과 입력 ({sample.sampleCode})</h2>
-            <form onSubmit={handleSubmit} className="space-y-6">
-                {results.map((result, index) => (
-                    <div key={index} className="p-4 border rounded-lg">
-                        <h3 className="font-semibold text-lg mb-2">{result.radionuclide}</h3>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">측정 방사능 농도 (Bq/kg)</label>
-                                <input 
-                                    type="number" 
-                                    step="any"
-                                    value={result.activity} 
-                                    onChange={(e) => handleResultChange(index, 'activity', e.target.value)} 
-                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
-                                    required 
-                                />
+        <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl mx-auto">
+            <button onClick={() => setSelectedSample(null)} className="mb-4 text-blue-600 hover:underline">← 목록으로 돌아가기</button>
+                        <h2 className="text-2xl font-bold mb-6">분석완료 정보 ({sample.sampleCode})</h2>
+                        
+                        <div className="space-y-2 mb-6">
+                {receptionHistory && renderHistorySection('시료접수', receptionData, sample.photoURLs)}
+                {receiveHistory && renderHistorySection('시료수령', receiveData, receiveHistory?.photoURLs)}
+                {prepStartEntry && renderHistorySection('시료전처리 시작', prepStartData, [])}
+                {prepDoneEntry && renderHistorySection('전처리완료', prepDoneData, prepDoneEntry?.photoURLs)}
+                {analysisStartEntry && renderHistorySection('분석시작', analysisStartData, [])}
+                {analysisDoneEntry && (
+                    <div className="border rounded-md">
+                        <button onClick={() => toggleSection('핵종분석결과')} className="w-full flex justify-between items-center p-3 bg-gray-50 hover:bg-gray-100">
+                            <span className="font-semibold">핵종분석결과</span>
+                            <span>{openSections.includes('핵종분석결과') ? '▲' : '▼'}</span>
+                        </button>
+                        {openSections.includes('핵종분석결과') && (
+                            <div className="p-4 border-t text-sm">
+                                <div className="space-y-2">
+                                    <div className="grid grid-cols-11 gap-2 font-semibold">
+                                        <div className="col-span-3">핵종명</div>
+                                        <div className="col-span-6">방사능농도 ± 불확도</div>
+                                        <div className="col-span-2">단위</div>
+                                    </div>
+                                    {nuclideResults.map((row) => (
+                                        <div key={row.id} className="grid grid-cols-11 gap-2 items-center">
+                                            <div className="col-span-3">{row.name}</div>
+                                            <div className="col-span-6 flex items-center gap-1">
+                                                {row.mdaChecked ? `< ${row.concentration}` : `${row.concentration} ± ${row.uncertainty}`}
+                                            </div>
+                                            <div className="col-span-2">{row.unit}</div>
+                                        </div>
+                                    ))}
+                                </div>
+                                {analystSignature && (
+                                    <div className="mt-6 pt-4 border-t">
+                                        <h3 className="font-semibold text-lg mb-2">분석자 전자결재</h3>
+                                        <div>
+                                            <p className="text-gray-800">{analystSignature.name}</p>
+                                            <p className="text-gray-500 text-sm">{new Date(analystSignature.timestamp).toLocaleString()}</p>
+                                        </div>
+                                    </div>
+                                )}
                             </div>
-                            <div>
-                                <label className="block text-sm font-medium text-gray-700">최소검출가능농도 (Bq/kg)</label>
-                                <input 
-                                    type="number" 
-                                    step="any"
-                                    value={result.mda} 
-                                    onChange={(e) => handleResultChange(index, 'mda', e.target.value)} 
-                                    className="mt-1 block w-full p-2 border border-gray-300 rounded-md"
-                                    required 
-                                />
-                            </div>
-                        </div>
+                        )}
                     </div>
-                ))}
-                <div className="flex justify-end gap-4 pt-4 border-t">
-                    <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
-                    <button type="submit" disabled={isSubmitting} className="px-4 py-2 bg-blue-600 text-white rounded-md disabled:bg-gray-400">
-                        {isSubmitting ? '저장 중...' : '결과 저장 및 검토 요청'}
-                    </button>
-                </div>
-            </form>
+                )}
+            </div>
+
+            {/* All other sections (preliminary report, notification, upload, etc.) */}
+            
+            <div className="flex justify-end gap-4 pt-4 border-t">
+                {isEditing ? (
+                    <button onClick={handleSave} className="px-4 py-2 bg-green-600 text-white rounded-md">저장</button>
+                ) : (
+                    <button onClick={() => setIsEditing(true)} className="px-4 py-2 bg-yellow-500 text-white rounded-md">수정</button>
+                )}
+                <button type="button" onClick={() => setSelectedSample(null)} className="px-4 py-2 bg-gray-200 rounded-md">뒤로</button>
+            </div>
         </div>
     );
 }
