@@ -2561,7 +2561,7 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
 
     return (
         <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold mb-6">시료 수령 확인</h2>
+            <h2 className="text-2xl font-bold mb-6">시료 수령 확인 ({sample.sampleCode})</h2>
             
             <div className="space-y-4 mb-6 border-t border-b py-6">
                 {/* ... 시료 정보 및 접수 정보 ... */}
@@ -2727,7 +2727,7 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
     const [isSigned, setIsSigned] = useState(false);
     const [signature, setSignature] = useState(null);
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [openSections, setOpenSections] = useState(['시료 정보', '시료수령 정보']); // 모든 섹션을 기본으로 열어둠
+    const [openSections, setOpenSections] = useState(['시료전처리 시작']); // 모든 섹션을 기본으로 열어둠
 
     const toggleSection = (section) => {
         setOpenSections(prev =>
@@ -2822,7 +2822,7 @@ function SamplePrepScreen({ sample, selectedSample, userData, db, appId, storage
 
     return (
         <div className="bg-white p-8 rounded-lg shadow-xl w-full max-w-4xl mx-auto">
-            <h2 className="text-2xl font-bold mb-6">시료 전처리</h2>
+            <h2 className="text-2xl font-bold mb-6">시료 전처리 ({currentSample.sampleCode})</h2>
 
             <div className="space-y-2 mb-6">
                 <h3 className="text-lg font-semibold text-gray-800 border-b pb-2 mb-4">이전 단계 정보</h3>
@@ -3069,7 +3069,7 @@ function SamplePreppingScreen({ sample, userData, location, showMessage, setSele
     const [isSigned, setIsSigned] = useState(false);
     const [signature, setSignature] = useState(null);
     const [endTime, setEndTime] = useState('');
-    const [openSections, setOpenSections] = useState([]);
+    const [openSections, setOpenSections] = useState(['시료전처리 시작']);
 
     const toggleSection = (sectionName) => {
         setOpenSections(prev => 
