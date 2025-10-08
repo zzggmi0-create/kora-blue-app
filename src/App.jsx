@@ -3878,11 +3878,11 @@ function SampleAnalysisDoneScreen({ sample, userData, db, appId, storage, locati
         { label: '시료 ID', value: editableSample.sampleCode, field: 'sampleCode', isEditable: true },
         { label: '품목명', value: editableSample.itemName, field: 'itemName', isEditable: true },
         { label: '접수자', value: receptionHistory?.actor, isEditable: false },
-        { label: '접수일시', value: receptionHistory?.timestamp.toDate().toLocaleString(), isEditable: false },
+        { label: '접수일시', value: receptionHistory?.timestamp && typeof receptionHistory.timestamp.toDate === 'function' ? receptionHistory.timestamp.toDate().toLocaleString() : 'N/A', isEditable: false },
     ];
     const receiveData = [
         { label: '수령자', value: receiveHistory?.actor, isEditable: false },
-        { label: '수령일시', value: receiveHistory?.timestamp.toDate().toLocaleString(), isEditable: false },
+        { label: '수령일시', value: receiveHistory?.timestamp && typeof receiveHistory.timestamp.toDate === 'function' ? receiveHistory.timestamp.toDate().toLocaleString() : 'N/A', isEditable: false },
     ];
     const prepStartData = [
         { label: '담당자', value: prepStartEntry?.actor, isEditable: false },
@@ -3895,7 +3895,7 @@ function SampleAnalysisDoneScreen({ sample, userData, db, appId, storage, locati
     const analysisStartData = [
         { label: '담당자', value: analysisStartEntry?.actor, isEditable: false },
         { label: '분석 장비', value: analysisStartEntry?.details?.equipmentName, isEditable: false },
-        { label: '분석 시작', value: analysisStartEntry?.timestamp.toDate().toLocaleString(), isEditable: false },
+        { label: '분석 시작', value: analysisStartEntry?.timestamp && typeof analysisStartEntry.timestamp.toDate === 'function' ? analysisStartEntry.timestamp.toDate().toLocaleString() : 'N/A', isEditable: false },
     ];
 
     return (
@@ -4251,7 +4251,9 @@ function AnalysisManagement({ db, appId, storage, userData, location, locationEr
                     <ul className="divide-y divide-gray-200">
                         {samplesForStep.length > 0 ? samplesForStep.map(sample => {
                             const lastHistory = sample.history && sample.history.length > 0 ? sample.history[sample.history.length - 1] : null;
-                            const lastUpdate = lastHistory ? lastHistory.timestamp.toDate().toLocaleString() : 'N/A';
+                            const lastUpdate = lastHistory && lastHistory.timestamp && typeof lastHistory.timestamp.toDate === 'function'
+                                ? lastHistory.timestamp.toDate().toLocaleString()
+                                : 'N/A';
                             return (
                                 <li key={sample.id} onClick={() => stepInfo.component && setSelectedSample(sample)} className={`grid ${gridColsClass} gap-4 p-4 text-sm hover:bg-gray-50 cursor-pointer`}>
                                     {showAnalysisTypeColumn && <div><span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${analysisTypeColorMap[sample.type] || 'bg-gray-100 text-gray-800'}`}>{sample.type}</span></div>}
@@ -4261,7 +4263,7 @@ function AnalysisManagement({ db, appId, storage, userData, location, locationEr
                                     <div>{lastUpdate}</div>
                                 </li>
                             );
-                        }) : <li className="p-4 text-center text-gray-500">해당 단계의 시료가 없습니다.</li>}
+                        }) : <li className="p-4 text-sm text-gray-500">해당 단계의 시료가 없습니다.</li>}
                     </ul>
                 </div>
             </div>
