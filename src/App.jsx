@@ -2598,7 +2598,7 @@ function SampleReceiveScreen({ sample, userData, db, appId, storage, location, s
                     </div>
                     <div className="flex md:col-span-2 items-start">
                         <strong className="w-28 text-gray-500 flex-shrink-0">채취 위치:</strong> 
-                        {receptionLocation ? (
+                        {receptionLocation && receptionLocation.lat && receptionLocation.lon ? (
                             <a href={`https://www.google.com/maps?q=${receptionLocation.lat},${receptionLocation.lon}`} target="_blank" rel="noopener noreferrer" className="text-sm text-blue-600 hover:underline">
                                 위도: {receptionLocation.lat.toFixed(5)}, 경도: {receptionLocation.lon.toFixed(5)}
                             </a>
